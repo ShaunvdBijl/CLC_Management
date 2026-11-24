@@ -2,10 +2,12 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-clc_management}
       POSTGRES_USER: ${POSTGRES_USER:-clc_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clc_dev_password_change_me}
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -56,4 +58,6 @@ services:
 
 volumes:
   pgdata:
+    name: clc_management_pgdata
   poster_uploads:
+    name: clc_management_poster_uploads
