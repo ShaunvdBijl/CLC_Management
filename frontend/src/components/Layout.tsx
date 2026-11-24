@@ -70,15 +70,14 @@ export function Layout() {
   const unreadCount = notifQuery.data?.unreadCount ?? 0;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F5F5F5]">
-      <div className="bc-tricolour-bar sticky top-0 z-40" />
+    <div className="min-h-screen flex flex-col bg-[#F4F4F2]">
+      <div className="bc-tricolour-bar sticky top-0 z-50" />
 
-      {/* Top Bar */}
-      <header className="sticky top-[4px] z-30 bg-[#1E1E1E] text-white border-b border-neutral-800 px-4 h-16 flex items-center justify-between gap-4">
+      <header className="sticky top-[3px] z-40 bg-[#141414]/95 backdrop-blur-md text-white border-b border-white/10 px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden p-2 rounded-lg hover:bg-neutral-800 text-neutral-200"
+            className="lg:hidden p-2 rounded-lg hover:bg-white/10 text-neutral-200"
             aria-label="Toggle Menu"
           >
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -87,15 +86,15 @@ export function Layout() {
             <img
               src={BC_ICON}
               alt="Belgium Campus iTversity"
-              className="w-8 h-8 rounded bg-white p-0.5 object-contain"
+              className="w-8 h-8 rounded-lg bg-white p-0.5 object-contain"
             />
-            <div>
-              <p className="font-bold text-white leading-tight text-sm sm:text-base">
+            <div className="leading-none">
+              <p className="font-extrabold text-white text-sm sm:text-base tracking-tight">
                 Belgium Campus <span className="text-[#DB3335]">iTversity</span>
               </p>
-              <p className="text-[11px] text-neutral-400">
-                {user?.campusName ?? 'Unassigned Campus'} ·{' '}
-                <span className="text-[#E9C00E] font-semibold">{user?.role ?? 'Loading'}</span>
+              <p className="font-mono text-[10px] text-neutral-400 uppercase tracking-wider mt-1">
+                {user?.campusName ?? 'Unassigned'} ·{' '}
+                <span className="text-[#E9C00E] font-bold">{user?.role ?? '...'}</span>
               </p>
             </div>
           </Link>
@@ -104,35 +103,36 @@ export function Layout() {
         <div className="flex items-center gap-2 sm:gap-3">
           <Link
             to="/"
-            className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-neutral-300 hover:text-[#E9C00E] px-2.5 py-1.5 rounded-lg hover:bg-neutral-800"
+            className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-300 hover:text-[#E9C00E] px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:border-[#E9C00E]/40 transition-all"
           >
             <Home className="w-3.5 h-3.5" />
             Campus Showcase
           </Link>
 
-          {/* Notification Bell */}
           <div className="relative">
             <button
               onClick={() => setBellOpen(!bellOpen)}
-              className="relative p-2 rounded-lg hover:bg-neutral-800 text-neutral-200"
+              className="relative p-2 rounded-full hover:bg-white/10 text-neutral-200 transition-colors"
               aria-label="Notifications"
             >
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 bg-[#DB3335] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                <span className="absolute -top-0.5 -right-0.5 bg-[#DB3335] text-white font-mono text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 shadow-sm">
                   {unreadCount}
                 </span>
               )}
             </button>
 
             {bellOpen && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white text-[#1E1E1E] rounded-xl shadow-xl border border-neutral-200 z-50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
-                  <span className="font-bold text-sm">In-App Notifications</span>
+              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white text-[#161616] rounded-2xl shadow-2xl border border-neutral-200 z-50 overflow-hidden">
+                <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between bg-[#FAFAFA]">
+                  <span className="font-extrabold text-xs uppercase tracking-wider text-[#161616]">
+                    Notifications
+                  </span>
                   {unreadCount > 0 && (
                     <button
                       onClick={() => markAllReadMutation.mutate()}
-                      className="text-xs font-semibold text-[#DB3335] hover:underline"
+                      className="text-xs font-bold text-[#DB3335] hover:underline"
                     >
                       Mark all read
                     </button>
@@ -144,22 +144,22 @@ export function Layout() {
                       <div
                         key={n.id}
                         onClick={() => !n.isRead && markReadMutation.mutate(n.id)}
-                        className={`p-3 text-sm cursor-pointer hover:bg-neutral-50 ${
+                        className={`p-3.5 text-sm cursor-pointer hover:bg-neutral-50 transition-colors ${
                           n.isRead ? 'bg-white' : 'bg-red-50/40'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <p className="font-semibold text-[#1E1E1E]">{n.title}</p>
-                          {!n.isRead && <span className="w-2 h-2 rounded-full bg-[#DB3335] mt-1.5 shrink-0" />}
+                          <p className="font-bold text-[#161616] text-xs">{n.title}</p>
+                          {!n.isRead && <span className="w-2 h-2 rounded-full bg-[#DB3335] mt-1 shrink-0" />}
                         </div>
-                        <p className="text-xs text-[#54595F] mt-0.5">{n.message}</p>
-                        <p className="text-[11px] text-neutral-400 mt-1">
+                        <p className="text-xs text-[#54595F] mt-1 leading-relaxed">{n.message}</p>
+                        <p className="font-mono text-[10px] text-neutral-400 mt-1.5">
                           {new Date(n.createdAt).toLocaleString()}
                         </p>
                       </div>
                     ))
                   ) : (
-                    <p className="p-4 text-sm text-[#54595F] text-center">No notifications yet.</p>
+                    <p className="p-6 text-xs text-[#54595F] text-center">No notifications yet.</p>
                   )}
                 </div>
               </div>
@@ -171,7 +171,7 @@ export function Layout() {
               logout();
               navigate('/');
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-600 hover:border-[#DB3335] hover:text-[#DB3335] text-xs font-semibold text-neutral-200 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-white/15 hover:border-[#DB3335] hover:text-[#DB3335] text-xs font-semibold text-neutral-200 transition-colors"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Log Out</span>
@@ -179,16 +179,15 @@ export function Layout() {
         </div>
       </header>
 
-      {/* Body */}
       <div className="flex flex-1">
         <aside
           className={`${
             sidebarOpen ? 'block' : 'hidden'
-          } lg:block w-64 bg-[#242424] text-neutral-200 border-r border-neutral-800 p-3 shrink-0`}
+          } lg:block w-64 bg-[#1A1A1A] text-neutral-300 border-r border-white/10 p-3.5 shrink-0`}
         >
-          <div className="px-3 py-2.5 mb-2 rounded-lg bg-[#1E1E1E] border border-neutral-800">
-            <p className="text-xs font-bold text-white truncate">{user?.fullName}</p>
-            <p className="text-[11px] text-neutral-400 truncate">{user?.email}</p>
+          <div className="px-3.5 py-3 mb-4 rounded-2xl bg-white/5 border border-white/10">
+            <p className="text-xs font-extrabold text-white truncate">{user?.fullName}</p>
+            <p className="font-mono text-[10px] text-neutral-400 truncate mt-0.5">{user?.email}</p>
           </div>
           <nav className="space-y-1">
             {navItems
@@ -200,10 +199,10 @@ export function Layout() {
                   end={to === '/events'}
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold tracking-wide transition-all ${
                       isActive
-                        ? 'bg-[#DB3335] text-white shadow-xs'
-                        : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                        ? 'bg-[#DB3335] text-white shadow-md shadow-[#DB3335]/20'
+                        : 'text-neutral-400 hover:bg-white/8 hover:text-white'
                     }`
                   }
                 >
@@ -214,18 +213,17 @@ export function Layout() {
           </nav>
         </aside>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-5 sm:p-8 max-w-7xl w-full mx-auto">
           <Outlet />
         </main>
       </div>
 
-      {/* Live SignalR Toast */}
       {latestToast && (
-        <div className="fixed bottom-4 right-4 z-50 max-w-sm bg-[#1E1E1E] text-white border-l-4 border-[#E9C00E] rounded-xl shadow-2xl p-4 flex items-start gap-3">
+        <div className="fixed bottom-5 right-5 z-50 max-w-sm bg-[#161616] text-white border-l-4 border-[#E9C00E] rounded-2xl shadow-2xl p-4 flex items-start gap-3">
           <Bell className="w-5 h-5 text-[#E9C00E] shrink-0 mt-0.5" />
           <div className="flex-1 text-sm">
-            <p className="font-bold">{latestToast.title}</p>
-            <p className="text-neutral-300 text-xs mt-0.5">{latestToast.message}</p>
+            <p className="font-bold text-xs">{latestToast.title}</p>
+            <p className="text-neutral-300 text-xs mt-0.5 leading-relaxed">{latestToast.message}</p>
           </div>
           <button onClick={dismissToast} className="text-neutral-400 hover:text-white">
             <X className="w-4 h-4" />
