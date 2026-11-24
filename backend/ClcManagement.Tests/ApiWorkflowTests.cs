@@ -328,6 +328,53 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
         Assert.True(sw.Elapsed.TotalMilliseconds / 3.0 < 500);
     }
 
+    [Fact]
+    public async Task TC08_ClubDetails_ClubShowcaseEvent_AndMarketingWhatsAppCampaign_WorkEndToEnd()
+    {
+        var clubsHead = await SignUpAndPromoteAsync("PTA Clubs 2", "pta.clubs2@bc.test", DbSeeder.PretoriaCampusId, UserRole.ClubsHead, Department.Clubs);
+        var mktHead = await SignUpAndPromoteAsync("PTA Mkt 2", "pta.mkt2@bc.test", DbSeeder.PretoriaCampusId, UserRole.MarketingHead, Department.Marketing);
+
+        var clubsClient = CreateClientAs(clubsHead.Email);
+        var mktClient = CreateClientAs(mktHead.Email);
+
+        // Register club with full details (WhatTheyDo, MeetingSchedule, MeetingLocation)
+        var clubRes = await clubsClient.PostAsJsonAsync("/api/v1/clubs", new CreateClubRequest(
+            "Robotics Club",
+            "Autonomous robotics engineering society.",
+            "Build and program competition robots.",
+            "Wednesdays 16:00 - 17:30",
+            "Robotics Lab B2",
+            clubsHead.Id));
+        Assert.Equal(HttpStatusCode.Created, clubRes.StatusCode);
+        var club = (await clubRes.Content.ReadFromJsonAsync<ClubDto>())!;
+        Assert.Equal("Robotics Lab B2", club.MeetingLocation);
+
+        // Clubs dept publishes a Club Showcase Event
+        var evRes = await clubsClient.PostAsJsonAsync("/api/v1/events", new CreateEventRequest(
+            null,
+            "Robotics Club Showcase",
+            "Live robot demos by students.",
+            "Innovation Hall",
+            DateTime.UtcNow.AddDays(8),
+            DateTime.UtcNow.AddDays(8).AddHours(3),
+            club.Id));
+        Assert.Equal(HttpStatusCode.Created, evRes.StatusCode);
+        var clubEvent = (await evRes.Content.ReadFromJsonAsync<EventDto>())!;
+        Assert.Equal("Robotics Club", clubEvent.ClubName);
+
+        // Marketing submits campaign with WhatsApp promo message
+        var mktRes = await mktClient.PostAsJsonAsync("/api/v1/proposals", new CreateProposalRequest(
+            ProposalType.Marketing,
+            "Robotics Showcase Campaign",
+            "Posters and WhatsApp group promo.",
+            null, null, null, null,
+            clubEvent.Id, club.Id,
+            WhatsAppMessage: "Join the Robotics Club Showcase this Friday at Innovation Hall!"));
+        Assert.Equal(HttpStatusCode.Created, mktRes.StatusCode);
+        var mktProp = (await mktRes.Content.ReadFromJsonAsync<ProposalDto>())!;
+        Assert.Contains("Innovation Hall", mktProp.WhatsAppMessage);
+    }
+
     private static MultipartFormDataContent CreateImageForm(byte[] bytes, string fileName, string contentType)
     {
         var form = new MultipartFormDataContent();
