@@ -1,0 +1,55 @@
+name: Docker Staging — Build & Container Security
+
+on:
+  pull_request:
+    branches: [docker, main]
+  push:
+    branches: [docker, main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  docker-staging-verify:
+    name: Validate & Scan Docker Stack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if docker-compose.yml exists
+        id: check
+        run: |
+          if [ -f "docker-compose.yml" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "docker-compose.yml not yet added; skipping staging container build."
+          fi
+
+      - name: Validate docker-compose.yml syntax
+        if: steps.check.outputs.exists == 'true'
+        run: docker compose config --quiet
+
+      - name: Build Docker images
+        if: steps.check.outputs.exists == 'true'
+        run: docker compose build
+
+      - name: Scan Backend Image with Trivy
+        if: steps.check.outputs.exists == 'true' && hashFiles('backend/ClcManagement.Api/Dockerfile') != ''
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './backend'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Scan Frontend Image with Trivy
+        if: steps.check.outputs.exists == 'true' && hashFiles('frontend/Dockerfile') != ''
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './frontend'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'

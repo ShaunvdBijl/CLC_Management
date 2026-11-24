@@ -1,0 +1,5 @@
+# Default repository owner reviews all governance, security, and infrastructure changes
+/.github/ @Shaun
+/SECURITY.md @Shaun
+/docker-compose.yml @Shaun
+/Documentation/ @Shaun

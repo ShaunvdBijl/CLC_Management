@@ -1,0 +1,111 @@
+name: Security — Secrets, Dependencies & SAST
+
+on:
+  pull_request:
+    branches: [dev, docker, main]
+  push:
+    branches: [dev, docker, main]
+  schedule:
+    # Weekly Monday 06:00 UTC security audit
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  secret-scan:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-audit:
+    name: Dependency Vulnerability Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Audit .NET NuGet packages
+        if: hashFiles('backend/ClcManagement.sln') != ''
+        run: |
+          dotnet restore backend/ClcManagement.sln
+          dotnet list backend/ClcManagement.sln package --vulnerable --include-transitive
+
+      - name: Audit Frontend npm packages
+        if: hashFiles('frontend/package-lock.json') != ''
+        working-directory: frontend
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+
+  codeql-csharp:
+    name: CodeQL SAST (C#)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for C# source
+        id: check
+        run: |
+          if [ -f "backend/ClcManagement.sln" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup .NET 10
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Initialize CodeQL
+        if: steps.check.outputs.exists == 'true'
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+
+      - name: Build C# for CodeQL
+        if: steps.check.outputs.exists == 'true'
+        run: dotnet build backend/ClcManagement.sln --configuration Release
+
+      - name: Perform CodeQL Analysis
+        if: steps.check.outputs.exists == 'true'
+        uses: github/codeql-action/analyze@v3
+
+  codeql-js-ts:
+    name: CodeQL SAST (JavaScript / TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for frontend source
+        id: check
+        run: |
+          if [ -f "frontend/package.json" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Initialize CodeQL
+        if: steps.check.outputs.exists == 'true'
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        if: steps.check.outputs.exists == 'true'
+        uses: github/codeql-action/analyze@v3

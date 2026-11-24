@@ -1,0 +1,114 @@
+name: CI — Build, Test & Branch Guard
+
+on:
+  pull_request:
+    branches: [dev, docker, main]
+  push:
+    branches: [dev, docker, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  branch-flow-guard:
+    name: Enforce Branching Hierarchy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate source -> target branch flow
+        run: |
+          BASE="${{ github.base_ref }}"
+          HEAD="${{ github.head_ref }}"
+          echo "Validating PR flow: ${HEAD} -> ${BASE}"
+
+          if [ "$BASE" = "main" ]; then
+            if [[ "$HEAD" != "docker" && "$HEAD" != hotfix/* ]]; then
+              echo "::error::PRs into 'main' (Production) must come from 'docker' (Staging) or 'hotfix/*'."
+              exit 1
+            fi
+          elif [ "$BASE" = "docker" ]; then
+            if [[ "$HEAD" != "dev" && "$HEAD" != hotfix/* && "$HEAD" != chore/docker* ]]; then
+              echo "::error::PRs into 'docker' (Staging) must come from 'dev', 'chore/docker*', or 'hotfix/*'."
+              exit 1
+            fi
+          elif [ "$BASE" = "dev" ]; then
+            if [[ "$HEAD" != feat/* && "$HEAD" != fix/* && "$HEAD" != chore/* && "$HEAD" != docs/* && "$HEAD" != ci/* && "$HEAD" != test/* && "$HEAD" != refactor/* && "$HEAD" != Git_Workflows ]]; then
+              echo "::error::PRs into 'dev' must come from a typed feature/task branch (feat/*, fix/*, chore/*, docs/*, ci/*, test/*, refactor/*)."
+              exit 1
+            fi
+          fi
+          echo "Branch flow valid."
+
+  backend-ci:
+    name: Backend (.NET 10 Build & Test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if backend solution exists
+        id: check
+        run: |
+          if [ -f "backend/ClcManagement.sln" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Backend solution not yet scaffolded; skipping .NET build/test."
+          fi
+
+      - name: Setup .NET 10
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        if: steps.check.outputs.exists == 'true'
+        run: dotnet restore backend/ClcManagement.sln
+
+      - name: Build solution
+        if: steps.check.outputs.exists == 'true'
+        run: dotnet build backend/ClcManagement.sln --configuration Release --no-restore
+
+      - name: Run unit & integration tests
+        if: steps.check.outputs.exists == 'true'
+        run: dotnet test backend/ClcManagement.sln --configuration Release --no-build --verbosity normal
+
+  frontend-ci:
+    name: Frontend (React + TypeScript Build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if frontend exists
+        id: check
+        run: |
+          if [ -f "frontend/package.json" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Frontend package.json not yet scaffolded; skipping Node build."
+          fi
+
+      - name: Setup Node.js 24
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.check.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type-check & Production Build
+        if: steps.check.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm run build
