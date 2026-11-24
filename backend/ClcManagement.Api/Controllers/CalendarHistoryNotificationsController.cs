@@ -69,16 +69,17 @@ public class CalendarHistoryNotificationsController : ControllerBase
     }
 
     [HttpGet("calendar/university")]
+    [AllowAnonymous]
     public async Task<ActionResult<List<PublicCampusEventDto>>> GetUniversityCalendar(
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
         CancellationToken ct)
     {
-        await _currentUser.RequireCurrentUserAsync(User, ct);
         return Ok(await QueryPublicEventsAsync(null, from, to, null, ct));
     }
 
     [HttpGet("cross-campus/events")]
+    [AllowAnonymous]
     public async Task<ActionResult<List<PublicCampusEventDto>>> GetCrossCampusEvents(
         [FromQuery] Guid? campusId,
         [FromQuery] DateTime? from,
@@ -86,7 +87,6 @@ public class CalendarHistoryNotificationsController : ControllerBase
         [FromQuery] string? search,
         CancellationToken ct)
     {
-        await _currentUser.RequireCurrentUserAsync(User, ct);
         return Ok(await QueryPublicEventsAsync(campusId, from, to, search, ct));
     }
 

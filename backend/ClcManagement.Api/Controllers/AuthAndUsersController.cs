@@ -31,6 +31,43 @@ public class AuthAndUsersController : ControllerBase
         return Ok(ToDto(user));
     }
 
+    [HttpPost("auth/signup")]
+    [AllowAnonymous]
+    public async Task<ActionResult<UserProfileDto>> SignUp([FromBody] SignUpRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.FullName) || string.IsNullOrWhiteSpace(request.Email))
+            throw new ArgumentException("Full name and email are required.");
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        if (!normalizedEmail.Contains('@'))
+            throw new ArgumentException("Please enter a valid email address.");
+
+        var existing = await _db.Users.Include(u => u.Campus)
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == normalizedEmail, ct);
+
+        if (existing is not null)
+            throw new InvalidOperationException("An account with this email already exists. Please log in instead.");
+
+        var user = new User
+        {
+            EntraObjectId = $"dev-oid:{normalizedEmail}",
+            Email = normalizedEmail,
+            FullName = request.FullName.Trim(),
+            CampusId = request.PreferredCampusId,
+            Role = UserRole.Unassigned,
+            Department = Department.None,
+            IsActive = true
+        };
+
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync(ct);
+
+        if (user.CampusId.HasValue)
+            await _db.Entry(user).Reference(u => u.Campus).LoadAsync(ct);
+
+        return CreatedAtAction(nameof(GetMe), ToDto(user));
+    }
+
     [HttpGet("auth/dev-users")]
     [AllowAnonymous]
     public async Task<ActionResult<List<UserProfileDto>>> GetDevUsers(CancellationToken ct)
@@ -40,19 +77,29 @@ public class AuthAndUsersController : ControllerBase
 
         var users = await _db.Users.AsNoTracking()
             .Include(u => u.Campus)
-            .OrderBy(u => u.CampusId)
-            .ThenBy(u => u.Role)
+            .OrderBy(u => u.Role == UserRole.Admin ? 0 : 1)
+            .ThenBy(u => u.CampusId)
+            .ThenBy(u => u.FullName)
             .ToListAsync(ct);
 
         return Ok(users.Select(ToDto).ToList());
     }
 
     [HttpGet("campuses")]
-    public async Task<ActionResult<object>> GetCampuses(CancellationToken ct)
+    [AllowAnonymous]
+    public async Task<ActionResult<List<CampusDto>>> GetCampuses(CancellationToken ct)
     {
         var campuses = await _db.Campuses.AsNoTracking()
             .OrderBy(c => c.Name)
-            .Select(c => new { c.Id, c.Name, c.Code })
+            .Select(c => new CampusDto(
+                c.Id,
+                c.Name,
+                c.Code,
+                c.Address,
+                c.Province,
+                c.ImageUrl,
+                c.Description,
+                c.Events.Count(e => e.Status == EventStatus.Confirmed)))
             .ToListAsync(ct);
 
         return Ok(campuses);
@@ -62,26 +109,36 @@ public class AuthAndUsersController : ControllerBase
     public async Task<ActionResult<List<UserProfileDto>>> GetUsers(
         [FromQuery] Department? department,
         [FromQuery] UserRole? role,
+        [FromQuery] Guid? campusId,
         [FromQuery] bool unassigned = false,
         CancellationToken ct = default)
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
         if (!actor.IsLeadership() && !actor.IsDepartmentHead())
-            throw new UnauthorizedAccessException("Only Campus Leadership or Department Heads can view the user roster.");
-
-        var campusId = actor.RequireCampusId();
+            throw new UnauthorizedAccessException("Only Admins, Campus Leadership, or Department Heads can view the user roster.");
 
         IQueryable<User> query = _db.Users.AsNoTracking().Include(u => u.Campus);
 
-        if (unassigned)
+        if (actor.IsAdmin())
         {
-            if (actor.Role != UserRole.CampusHead)
-                throw new UnauthorizedAccessException("Only the Campus Head can view unassigned users.");
-            query = query.Where(u => u.Role == UserRole.Unassigned || u.CampusId == null);
+            if (unassigned)
+                query = query.Where(u => u.Role == UserRole.Unassigned || u.CampusId == null);
+            else if (campusId.HasValue)
+                query = query.Where(u => u.CampusId == campusId.Value);
         }
         else
         {
-            query = query.Where(u => u.CampusId == campusId);
+            var actorCampusId = actor.RequireCampusId();
+            if (unassigned)
+            {
+                if (actor.Role != UserRole.CampusHead)
+                    throw new UnauthorizedAccessException("Only Admins or the Campus Head can view unassigned users.");
+                query = query.Where(u => u.Role == UserRole.Unassigned || u.CampusId == null);
+            }
+            else
+            {
+                query = query.Where(u => u.CampusId == actorCampusId);
+            }
         }
 
         if (department.HasValue)
@@ -101,31 +158,58 @@ public class AuthAndUsersController : ControllerBase
         CancellationToken ct)
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
-        if (actor.Role != UserRole.CampusHead)
-            throw new UnauthorizedAccessException("Only the Campus Head can promote, demote, or transfer members.");
+        if (!actor.IsAdmin() && actor.Role != UserRole.CampusHead)
+            throw new UnauthorizedAccessException("Only an Admin or Campus Head can promote, demote, or transfer members.");
 
-        var actorCampusId = actor.RequireCampusId();
         var target = await _db.Users.Include(u => u.Campus).FirstOrDefaultAsync(u => u.Id == id, ct)
             ?? throw new KeyNotFoundException("User not found.");
 
-        if (target.CampusId.HasValue && target.CampusId != actorCampusId)
-            throw new UnauthorizedAccessException("Cannot modify users belonging to another campus.");
-
-        if (request.CampusId.HasValue && request.CampusId != actorCampusId)
-            throw new UnauthorizedAccessException("Campus Head can only assign members to their own campus.");
-
-        target.CampusId = actorCampusId;
-        target.Role = request.Role;
-        target.Department = request.Role switch
+        if (actor.IsAdmin())
         {
-            UserRole.CampusHead or UserRole.Deputy or UserRole.Unassigned => Department.None,
-            UserRole.EventsHead => Department.Events,
-            UserRole.ClubsHead => Department.Clubs,
-            UserRole.MarketingHead => Department.Marketing,
-            _ => request.Department
-        };
-        target.UpdatedAt = DateTime.UtcNow;
+            // Global Admin can promote any user to ANY role, department, and campus
+            if (request.CampusId.HasValue)
+            {
+                var campusExists = await _db.Campuses.AnyAsync(c => c.Id == request.CampusId.Value, ct);
+                if (!campusExists)
+                    throw new ArgumentException("Selected campus does not exist.");
+                target.CampusId = request.CampusId.Value;
+            }
+            target.Role = request.Role;
+            target.Department = request.Role switch
+            {
+                UserRole.Admin or UserRole.CampusHead or UserRole.Deputy or UserRole.Unassigned => Department.None,
+                UserRole.EventsHead => Department.Events,
+                UserRole.ClubsHead => Department.Clubs,
+                UserRole.MarketingHead => Department.Marketing,
+                _ => request.Department
+            };
+        }
+        else
+        {
+            // CampusHead is restricted to their own campus and cannot assign Admin
+            if (request.Role == UserRole.Admin)
+                throw new UnauthorizedAccessException("Only a global Admin can assign the Admin role.");
 
+            var actorCampusId = actor.RequireCampusId();
+            if (target.CampusId.HasValue && target.CampusId != actorCampusId)
+                throw new UnauthorizedAccessException("Cannot modify users belonging to another campus.");
+
+            if (request.CampusId.HasValue && request.CampusId != actorCampusId)
+                throw new UnauthorizedAccessException("Campus Head can only assign members to their own campus.");
+
+            target.CampusId = actorCampusId;
+            target.Role = request.Role;
+            target.Department = request.Role switch
+            {
+                UserRole.CampusHead or UserRole.Deputy or UserRole.Unassigned => Department.None,
+                UserRole.EventsHead => Department.Events,
+                UserRole.ClubsHead => Department.Clubs,
+                UserRole.MarketingHead => Department.Marketing,
+                _ => request.Department
+            };
+        }
+
+        target.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
         await _db.Entry(target).Reference(u => u.Campus).LoadAsync(ct);

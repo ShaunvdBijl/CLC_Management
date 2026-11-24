@@ -8,7 +8,8 @@ public enum UserRole
     EventsHead = 3,
     ClubsHead = 4,
     MarketingHead = 5,
-    DepartmentMember = 6
+    DepartmentMember = 6,
+    Admin = 7
 }
 
 public enum Department
