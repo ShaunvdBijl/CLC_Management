@@ -79,7 +79,7 @@ public class AppDbContext : DbContext
             entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
             entity.HasOne(x => x.Campus).WithMany(c => c.Clubs).HasForeignKey(x => x.CampusId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.SourceProposal).WithMany().HasForeignKey(x => x.SourceProposalId).OnDelete(DeleteBehavior.SetNull);
-            entity.HasOne(x => x.ClubHead).WithMany().HasForeignKey(x => x.ClubHeadId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ClubHead).WithMany().HasForeignKey(x => x.ClubHeadId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<CampusEvent>(entity =>

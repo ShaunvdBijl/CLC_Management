@@ -52,6 +52,7 @@ public class Proposal
 
     public Guid? ProposedClubHeadId { get; set; }
     public User? ProposedClubHead { get; set; }
+    public string? ProposedClubHeadName { get; set; }
     public string? ClubWhatTheyDo { get; set; }
     public string? ClubMeetingSchedule { get; set; }
     public string? ClubMeetingLocation { get; set; }
@@ -92,8 +93,9 @@ public class Club
     public string WhatTheyDo { get; set; } = string.Empty;
     public string MeetingSchedule { get; set; } = string.Empty;
     public string MeetingLocation { get; set; } = string.Empty;
-    public Guid ClubHeadId { get; set; }
-    public User ClubHead { get; set; } = null!;
+    public Guid? ClubHeadId { get; set; }
+    public User? ClubHead { get; set; }
+    public string ClubHeadName { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -163,11 +163,26 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
         var ptaHead = await SignUpAndPromoteAsync("PTA Head", "pta.head@bc.test", DbSeeder.PretoriaCampusId, UserRole.CampusHead, Department.None);
         var kmpMember = await SignUpAndPromoteAsync("KMP Member", "kmp.member@bc.test", DbSeeder.KemptonParkCampusId, UserRole.DepartmentMember, Department.Clubs);
 
-        // Pretoria Campus Head cannot modify Kempton Park member -> 403
+        // Pretoria Campus Head can ONLY see Pretoria students in /api/v1/users
         var ptaHeadClient = CreateClientAs(ptaHead.Email);
+        var ptaVisibleUsers = await ptaHeadClient.GetFromJsonAsync<List<UserProfileDto>>("/api/v1/users");
+        Assert.DoesNotContain(ptaVisibleUsers!, u => u.CampusName == "Kempton Park Campus");
+
+        // Pretoria Campus Head cannot modify Kempton Park member -> 403
         var crossAttempt = await ptaHeadClient.PatchAsJsonAsync($"/api/v1/users/{kmpMember.Id}/role",
             new UpdateUserRoleRequest(UserRole.ClubsHead, Department.Clubs, DbSeeder.KemptonParkCampusId));
         Assert.Equal(HttpStatusCode.Forbidden, crossAttempt.StatusCode);
+
+        // Deputy can update home-campus member but NOT cross-campus member
+        var ptaDeputy = await SignUpAndPromoteAsync("PTA Deputy", "pta.deputy@bc.test", DbSeeder.PretoriaCampusId, UserRole.Deputy, Department.None);
+        var ptaStudent = await SignUpAndPromoteAsync("PTA Student", "pta.student@bc.test", DbSeeder.PretoriaCampusId, UserRole.Unassigned, Department.None);
+        var deputyClient = CreateClientAs(ptaDeputy.Email);
+        var deputyHomePromo = await deputyClient.PatchAsJsonAsync($"/api/v1/users/{ptaStudent.Id}/role",
+            new UpdateUserRoleRequest(UserRole.DepartmentMember, Department.Events, DbSeeder.PretoriaCampusId));
+        deputyHomePromo.EnsureSuccessStatusCode();
+        var deputyCrossAttempt = await deputyClient.PatchAsJsonAsync($"/api/v1/users/{kmpMember.Id}/role",
+            new UpdateUserRoleRequest(UserRole.DepartmentMember, Department.Events, DbSeeder.KemptonParkCampusId));
+        Assert.Equal(HttpStatusCode.Forbidden, deputyCrossAttempt.StatusCode);
 
         // Pretoria Campus Head cannot promote anyone to Admin -> 403
         var adminAttempt = await ptaHeadClient.PatchAsJsonAsync($"/api/v1/users/{ptaHead.Id}/role",
@@ -337,17 +352,18 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
         var clubsClient = CreateClientAs(clubsHead.Email);
         var mktClient = CreateClientAs(mktHead.Email);
 
-        // Register club with full details (WhatTheyDo, MeetingSchedule, MeetingLocation)
+        // Register club with full details + non-CLC Club Head text name
         var clubRes = await clubsClient.PostAsJsonAsync("/api/v1/clubs", new CreateClubRequest(
             "Robotics Club",
             "Autonomous robotics engineering society.",
             "Build and program competition robots.",
             "Wednesdays 16:00 - 17:30",
             "Robotics Lab B2",
-            clubsHead.Id));
+            "Jaco Pietersen"));
         Assert.Equal(HttpStatusCode.Created, clubRes.StatusCode);
         var club = (await clubRes.Content.ReadFromJsonAsync<ClubDto>())!;
         Assert.Equal("Robotics Lab B2", club.MeetingLocation);
+        Assert.Equal("Jaco Pietersen", club.ClubHeadName);
 
         // Clubs dept publishes a Club Showcase Event
         var evRes = await clubsClient.PostAsJsonAsync("/api/v1/events", new CreateEventRequest(

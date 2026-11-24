@@ -39,7 +39,8 @@ public record CreateProposalRequest(
     string? ClubWhatTheyDo = null,
     string? ClubMeetingSchedule = null,
     string? ClubMeetingLocation = null,
-    string? WhatsAppMessage = null);
+    string? WhatsAppMessage = null,
+    string? ProposedClubHeadName = null);
 
 public record ResubmitProposalRequest(
     string Title,
@@ -53,7 +54,8 @@ public record ResubmitProposalRequest(
     string? ClubWhatTheyDo = null,
     string? ClubMeetingSchedule = null,
     string? ClubMeetingLocation = null,
-    string? WhatsAppMessage = null);
+    string? WhatsAppMessage = null,
+    string? ProposedClubHeadName = null);
 
 public record ReviewProposalRequest(ReviewDecision Decision, string? Comment);
 
@@ -159,7 +161,7 @@ public record CreateClubRequest(
     string WhatTheyDo,
     string MeetingSchedule,
     string MeetingLocation,
-    Guid ClubHeadId);
+    string ClubHeadName);
 
 public record UpdateClubRequest(
     string Name,
@@ -167,7 +169,7 @@ public record UpdateClubRequest(
     string WhatTheyDo,
     string MeetingSchedule,
     string MeetingLocation,
-    Guid ClubHeadId);
+    string ClubHeadName);
 
 public record ClubDto(
     Guid Id,
@@ -177,12 +179,12 @@ public record ClubDto(
     string WhatTheyDo,
     string MeetingSchedule,
     string MeetingLocation,
-    Guid ClubHeadId,
+    Guid? ClubHeadId,
     string ClubHeadName,
     bool IsActive,
     DateTime CreatedAt);
 
-public record AssignClubHeadRequest(Guid ClubHeadId);
+public record AssignClubHeadRequest(string ClubHeadName);
 
 public record CreateMeetingRequest(
     string Title,

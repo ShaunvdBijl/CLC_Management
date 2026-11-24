@@ -111,6 +111,7 @@ public class ProposalsController : ControllerBase
             request.ProposedEndAt,
             request.ProposedVenue,
             request.ProposedClubHeadId,
+            request.ProposedClubHeadName,
             request.TargetEventId,
             request.TargetClubId);
 
@@ -126,6 +127,7 @@ public class ProposalsController : ControllerBase
             ProposedEndAt = request.ProposedEndAt?.ToUniversalTime(),
             ProposedVenue = request.ProposedVenue?.Trim(),
             ProposedClubHeadId = request.ProposedClubHeadId,
+            ProposedClubHeadName = request.ProposedClubHeadName?.Trim(),
             TargetEventId = request.TargetEventId,
             TargetClubId = request.TargetClubId,
             ClubWhatTheyDo = request.ClubWhatTheyDo?.Trim(),
@@ -179,6 +181,7 @@ public class ProposalsController : ControllerBase
             request.ProposedEndAt,
             request.ProposedVenue,
             request.ProposedClubHeadId,
+            request.ProposedClubHeadName,
             request.TargetEventId,
             request.TargetClubId);
 
@@ -188,6 +191,7 @@ public class ProposalsController : ControllerBase
         proposal.ProposedEndAt = request.ProposedEndAt?.ToUniversalTime();
         proposal.ProposedVenue = request.ProposedVenue?.Trim();
         proposal.ProposedClubHeadId = request.ProposedClubHeadId;
+        proposal.ProposedClubHeadName = request.ProposedClubHeadName?.Trim();
         proposal.TargetEventId = request.TargetEventId;
         proposal.TargetClubId = request.TargetClubId;
         proposal.ClubWhatTheyDo = request.ClubWhatTheyDo?.Trim();
@@ -259,7 +263,10 @@ public class ProposalsController : ControllerBase
 
         if (request.Decision == ReviewDecision.Approved && proposal.ProposalType == ProposalType.Club)
         {
-            var clubHeadId = proposal.ProposedClubHeadId ?? proposal.SubmittedById;
+            var headName = !string.IsNullOrWhiteSpace(proposal.ProposedClubHeadName)
+                ? proposal.ProposedClubHeadName
+                : (await _db.Users.Where(u => u.Id == proposal.ProposedClubHeadId).Select(u => u.FullName).FirstOrDefaultAsync(ct) ?? "TBD");
+
             _db.Clubs.Add(new Club
             {
                 CampusId = proposal.CampusId,
@@ -269,7 +276,8 @@ public class ProposalsController : ControllerBase
                 WhatTheyDo = proposal.ClubWhatTheyDo ?? string.Empty,
                 MeetingSchedule = proposal.ClubMeetingSchedule ?? string.Empty,
                 MeetingLocation = proposal.ClubMeetingLocation ?? string.Empty,
-                ClubHeadId = clubHeadId,
+                ClubHeadId = proposal.ProposedClubHeadId,
+                ClubHeadName = headName,
                 IsActive = true
             });
         }
@@ -345,6 +353,7 @@ public class ProposalsController : ControllerBase
         DateTime? endAt,
         string? venue,
         Guid? clubHeadId,
+        string? clubHeadName,
         Guid? targetEventId,
         Guid? targetClubId)
     {
@@ -360,8 +369,8 @@ public class ProposalsController : ControllerBase
         }
         else if (type == ProposalType.Club)
         {
-            if (!clubHeadId.HasValue)
-                throw new ArgumentException("Club proposals must designate a Club Head.");
+            if (!clubHeadId.HasValue && string.IsNullOrWhiteSpace(clubHeadName))
+                throw new ArgumentException("Club proposals must designate a Club Head name.");
         }
         else if (type == ProposalType.Marketing)
         {
@@ -399,7 +408,7 @@ public class ProposalsController : ControllerBase
         p.ProposedEndAt,
         p.ProposedVenue,
         p.ProposedClubHeadId,
-        p.ProposedClubHead?.FullName,
+        !string.IsNullOrWhiteSpace(p.ProposedClubHeadName) ? p.ProposedClubHeadName : p.ProposedClubHead?.FullName,
         p.TargetEventId,
         p.TargetEvent?.Title,
         p.TargetClubId,

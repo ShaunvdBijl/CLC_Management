@@ -128,16 +128,15 @@ public class AuthAndUsersController : ControllerBase
         }
         else
         {
+            // Campus Head, Deputy, and Dept Heads can ONLY see students/members from their own campus
             var actorCampusId = actor.RequireCampusId();
+            query = query.Where(u => u.CampusId == actorCampusId);
+
             if (unassigned)
             {
-                if (actor.Role != UserRole.CampusHead)
-                    throw new UnauthorizedAccessException("Only Admins or the Campus Head can view unassigned users.");
-                query = query.Where(u => u.Role == UserRole.Unassigned || u.CampusId == null);
-            }
-            else
-            {
-                query = query.Where(u => u.CampusId == actorCampusId);
+                if (!actor.IsLeadership())
+                    throw new UnauthorizedAccessException("Only Admins, Campus Head, or Deputy can view unassigned users.");
+                query = query.Where(u => u.Role == UserRole.Unassigned);
             }
         }
 
@@ -158,15 +157,14 @@ public class AuthAndUsersController : ControllerBase
         CancellationToken ct)
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
-        if (!actor.IsAdmin() && actor.Role != UserRole.CampusHead)
-            throw new UnauthorizedAccessException("Only an Admin or Campus Head can promote, demote, or transfer members.");
+        if (!actor.IsAdmin() && actor.Role != UserRole.CampusHead && actor.Role != UserRole.Deputy)
+            throw new UnauthorizedAccessException("Only an Admin, Campus Head, or Deputy can promote, demote, or transfer members.");
 
         var target = await _db.Users.Include(u => u.Campus).FirstOrDefaultAsync(u => u.Id == id, ct)
             ?? throw new KeyNotFoundException("User not found.");
 
         if (actor.IsAdmin())
         {
-            // Global Admin can promote any user to ANY role, department, and campus
             if (request.CampusId.HasValue)
             {
                 var campusExists = await _db.Campuses.AnyAsync(c => c.Id == request.CampusId.Value, ct);
@@ -186,16 +184,16 @@ public class AuthAndUsersController : ControllerBase
         }
         else
         {
-            // CampusHead is restricted to their own campus and cannot assign Admin
-            if (request.Role == UserRole.Admin)
-                throw new UnauthorizedAccessException("Only a global Admin can assign the Admin role.");
+            // CampusHead and Deputy can ONLY update students/members from their own campus and cannot assign Admin
+            if (request.Role == UserRole.Admin || target.Role == UserRole.Admin)
+                throw new UnauthorizedAccessException("Only a global Admin can assign or modify the Admin role.");
 
             var actorCampusId = actor.RequireCampusId();
-            if (target.CampusId.HasValue && target.CampusId != actorCampusId)
-                throw new UnauthorizedAccessException("Cannot modify users belonging to another campus.");
+            if (target.CampusId != actorCampusId)
+                throw new UnauthorizedAccessException("Campus Head / Deputy can only update student roles from their own campus.");
 
             if (request.CampusId.HasValue && request.CampusId != actorCampusId)
-                throw new UnauthorizedAccessException("Campus Head can only assign members to their own campus.");
+                throw new UnauthorizedAccessException("Campus Head / Deputy cannot move students to another campus.");
 
             target.CampusId = actorCampusId;
             target.Role = request.Role;

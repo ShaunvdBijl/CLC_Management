@@ -50,9 +50,8 @@ public class ClubsAndMeetingsController : ControllerBase
         var campusId = actor.RequireCampusId();
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Description))
             throw new ArgumentException("Club name and description are required.");
-
-        var head = await _db.Users.FirstOrDefaultAsync(u => u.Id == request.ClubHeadId && (u.CampusId == campusId || actor.IsAdmin()), ct)
-            ?? throw new ArgumentException("Selected Club Head must belong to your campus.");
+        if (string.IsNullOrWhiteSpace(request.ClubHeadName))
+            throw new ArgumentException("Club Head name is required.");
 
         var club = new Club
         {
@@ -62,7 +61,7 @@ public class ClubsAndMeetingsController : ControllerBase
             WhatTheyDo = request.WhatTheyDo.Trim(),
             MeetingSchedule = request.MeetingSchedule.Trim(),
             MeetingLocation = request.MeetingLocation.Trim(),
-            ClubHeadId = head.Id,
+            ClubHeadName = request.ClubHeadName.Trim(),
             IsActive = true
         };
 
@@ -75,11 +74,10 @@ public class ClubsAndMeetingsController : ControllerBase
             ActionType = "ClubRegistered",
             EntityType = "Club",
             EntityId = club.Id,
-            Summary = $"Registered club: {club.Name} (Meets: {club.MeetingSchedule} at {club.MeetingLocation})"
+            Summary = $"Registered club: {club.Name} (Head: {club.ClubHeadName})"
         });
 
         await _db.SaveChangesAsync(ct);
-        club.ClubHead = head;
 
         return CreatedAtAction(nameof(GetClubs), new { id = club.Id }, ToClubDto(club));
     }
@@ -98,18 +96,17 @@ public class ClubsAndMeetingsController : ControllerBase
         if (club.CampusId != campusId && !actor.IsAdmin())
             throw new UnauthorizedAccessException("Cannot modify clubs from another campus.");
 
-        var head = await _db.Users.FirstOrDefaultAsync(u => u.Id == request.ClubHeadId && (u.CampusId == club.CampusId || actor.IsAdmin()), ct)
-            ?? throw new ArgumentException("Selected Club Head must belong to the campus.");
+        if (string.IsNullOrWhiteSpace(request.ClubHeadName))
+            throw new ArgumentException("Club Head name is required.");
 
         club.Name = request.Name.Trim();
         club.Description = request.Description.Trim();
         club.WhatTheyDo = request.WhatTheyDo.Trim();
         club.MeetingSchedule = request.MeetingSchedule.Trim();
         club.MeetingLocation = request.MeetingLocation.Trim();
-        club.ClubHeadId = head.Id;
+        club.ClubHeadName = request.ClubHeadName.Trim();
 
         await _db.SaveChangesAsync(ct);
-        club.ClubHead = head;
         return Ok(ToClubDto(club));
     }
 
@@ -117,8 +114,8 @@ public class ClubsAndMeetingsController : ControllerBase
     public async Task<ActionResult<ClubDto>> AssignClubHead(Guid id, [FromBody] AssignClubHeadRequest request, CancellationToken ct)
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
-        if (actor.Role != UserRole.ClubsHead && actor.Role != UserRole.CampusHead && !actor.IsAdmin())
-            throw new UnauthorizedAccessException("Only Clubs Head, Campus Head, or Admin can assign a Club Head.");
+        if (actor.Role != UserRole.ClubsHead && !actor.IsLeadership())
+            throw new UnauthorizedAccessException("Only Clubs Head, Campus Leadership, or Admin can assign a Club Head.");
 
         var campusId = actor.RequireCampusId();
         var club = await _db.Clubs.FirstOrDefaultAsync(c => c.Id == id, ct)
@@ -127,12 +124,12 @@ public class ClubsAndMeetingsController : ControllerBase
         if (club.CampusId != campusId && !actor.IsAdmin())
             throw new UnauthorizedAccessException("Cannot modify clubs from another campus.");
 
-        var newHead = await _db.Users.FirstOrDefaultAsync(u => u.Id == request.ClubHeadId && (u.CampusId == club.CampusId || actor.IsAdmin()), ct)
-            ?? throw new ArgumentException("Selected Club Head must belong to your campus.");
+        if (string.IsNullOrWhiteSpace(request.ClubHeadName))
+            throw new ArgumentException("Club Head name cannot be empty.");
 
-        club.ClubHeadId = newHead.Id;
+        club.ClubHeadName = request.ClubHeadName.Trim();
+        club.ClubHeadId = null;
         await _db.SaveChangesAsync(ct);
-        club.ClubHead = newHead;
 
         return Ok(ToClubDto(club));
     }
@@ -237,7 +234,7 @@ public class ClubsAndMeetingsController : ControllerBase
         c.MeetingSchedule,
         c.MeetingLocation,
         c.ClubHeadId,
-        c.ClubHead?.FullName ?? string.Empty,
+        !string.IsNullOrWhiteSpace(c.ClubHeadName) ? c.ClubHeadName : (c.ClubHead?.FullName ?? string.Empty),
         c.IsActive,
         c.CreatedAt);
 }
