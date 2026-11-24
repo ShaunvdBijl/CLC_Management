@@ -241,10 +241,10 @@ export function ProposalsPage() {
 
           {/* Proposal File Drop Zone for Autofill */}
           <FileDropZone
-            accept=".txt,.md,.json,.csv"
+            accept=".docx,.txt,.md,.json,.csv"
             variant="document"
-            title="Drop a proposal document here to autofill fields"
-            subtitle="Supports .txt, .md, .json, or .csv — or click to browse (Title, Venue, Start, End, Description, Club Details, WhatsApp Message)"
+            title="Drop a Word (.docx) or text proposal document here to autofill fields"
+            subtitle="Supports Microsoft Word (.docx), .txt, .md, .json, or .csv — extracts Title, Venue, Start, End, Description, Club Details & WhatsApp Message"
             onFileSelected={handleProposalFile}
           />
 

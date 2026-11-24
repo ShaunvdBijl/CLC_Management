@@ -50,19 +50,28 @@ export function Layout() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  const showEventsTools = isLeadership(user) || user?.department === 'Events';
-  const showHistory = isLeadership(user) || isDeptHead(user);
-  const showMembersAdmin = isLeadership(user);
+  const isAssigned = user?.role !== 'Unassigned';
+  const leader = isLeadership(user);
+  const showEventsPage = leader || user?.department === 'Events' || user?.department === 'Marketing';
+  const showEventsTools = leader || user?.department === 'Events';
+  const showClubsPage = leader || user?.department === 'Clubs';
+  const showHistory = leader || isDeptHead(user);
+  const showMembersAdmin = leader;
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: true },
-    { to: '/proposals', label: 'Proposals', icon: FileText, show: user?.role !== 'Unassigned' },
-    { to: '/events', label: 'Events & Posters', icon: Sparkles, show: user?.role !== 'Unassigned' },
+    { to: '/proposals', label: 'Proposals', icon: FileText, show: isAssigned },
+    {
+      to: '/events',
+      label: user?.department === 'Marketing' ? 'Event Posters' : 'Events & Posters',
+      icon: Sparkles,
+      show: showEventsPage,
+    },
     { to: '/events/board', label: 'Events Kanban', icon: Kanban, show: showEventsTools },
     { to: '/events/timeline', label: 'Events Gantt', icon: GanttChart, show: showEventsTools },
-    { to: '/clubs', label: 'Student Clubs', icon: Users, show: user?.role !== 'Unassigned' },
-    { to: '/meetings', label: 'CLC Meetings', icon: CalendarClock, show: user?.role !== 'Unassigned' },
-    { to: '/tasks', label: 'Tasks', icon: CheckSquare, show: user?.role !== 'Unassigned' },
+    { to: '/clubs', label: 'Student Clubs', icon: Users, show: showClubsPage },
+    { to: '/meetings', label: 'CLC Meetings', icon: CalendarClock, show: isAssigned },
+    { to: '/tasks', label: 'Department Tasks', icon: CheckSquare, show: isAssigned },
     { to: '/calendar', label: 'Calendars', icon: Calendar, show: true },
     { to: '/cross-campus', label: 'Cross-Campus', icon: Globe, show: true },
     { to: '/history', label: 'Activity History', icon: History, show: showHistory },

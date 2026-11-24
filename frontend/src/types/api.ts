@@ -146,6 +146,11 @@ export interface Meeting {
   startAt: string;
   endAt: string;
   createdByName: string;
+  teamsJoinUrl: string | null;
+  recordingUrl: string | null;
+  transcriptUrl: string | null;
+  transcriptText: string | null;
+  summarySyncedAt: string | null;
 }
 
 export interface WorkTask {

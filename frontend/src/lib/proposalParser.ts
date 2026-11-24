@@ -1,3 +1,4 @@
+import mammoth from 'mammoth';
 import type { ProposalType } from '../types/api';
 
 export interface ParsedProposalFields {
@@ -14,6 +15,15 @@ export interface ParsedProposalFields {
   filledCount: number;
 }
 
+export async function extractDocumentText(file: File): Promise<string> {
+  if (file.name.toLowerCase().endsWith('.docx')) {
+    const arrayBuffer = await file.arrayBuffer();
+    const { value } = await mammoth.extractRawText({ arrayBuffer });
+    return value;
+  }
+  return file.text();
+}
+
 function toDateTimeLocal(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (!trimmed) return undefined;
@@ -27,7 +37,7 @@ function toDateTimeLocal(raw: string): string | undefined {
 }
 
 export async function parseProposalFile(file: File): Promise<ParsedProposalFields> {
-  const text = await file.text();
+  const text = await extractDocumentText(file);
   const result: ParsedProposalFields = { filledCount: 0 };
 
   const assign = <K extends keyof Omit<ParsedProposalFields, 'filledCount'>>(
