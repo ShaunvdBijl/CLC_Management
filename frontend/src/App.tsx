@@ -10,7 +10,8 @@ import { ProposalsPage } from './pages/ProposalsPage';
 import { EventsPage } from './pages/EventsPage';
 import { EventsKanbanPage } from './pages/EventsKanbanPage';
 import { EventsGanttPage } from './pages/EventsGanttPage';
-import { ClubsAndMeetingsPage } from './pages/ClubsAndMeetingsPage';
+import { ClubsPage } from './pages/ClubsPage';
+import { MeetingsPage } from './pages/MeetingsPage';
 import { TasksPage } from './pages/TasksPage';
 import { CalendarsPage } from './pages/CalendarsPage';
 import { CrossCampusPage } from './pages/CrossCampusPage';
@@ -53,7 +54,8 @@ export default function App() {
         <Route path="/events" element={<EventsPage />} />
         <Route path="/events/board" element={<EventsKanbanPage />} />
         <Route path="/events/timeline" element={<EventsGanttPage />} />
-        <Route path="/clubs" element={<ClubsAndMeetingsPage />} />
+        <Route path="/clubs" element={<ClubsPage />} />
+        <Route path="/meetings" element={<MeetingsPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/calendar" element={<CalendarsPage />} />
         <Route path="/cross-campus" element={<CrossCampusPage />} />

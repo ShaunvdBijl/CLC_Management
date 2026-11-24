@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   Calendar,
+  CalendarClock,
   CheckSquare,
   FileText,
   GanttChart,
@@ -20,7 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
-import { isAdmin, isDeptHead, isLeadership, useAuth } from '../lib/authContext';
+import { isDeptHead, isLeadership, useAuth } from '../lib/authContext';
 import type { NotificationFeed } from '../types/api';
 
 const BC_ICON = 'https://www.belgiumcampus.ac.za/wp-content/uploads/2021/01/BC-Icon.png';
@@ -51,7 +52,7 @@ export function Layout() {
 
   const showEventsTools = isLeadership(user) || user?.department === 'Events';
   const showHistory = isLeadership(user) || isDeptHead(user);
-  const showMembersAdmin = isAdmin(user) || user?.role === 'CampusHead';
+  const showMembersAdmin = isLeadership(user);
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: true },
@@ -59,7 +60,8 @@ export function Layout() {
     { to: '/events', label: 'Events & Posters', icon: Sparkles, show: user?.role !== 'Unassigned' },
     { to: '/events/board', label: 'Events Kanban', icon: Kanban, show: showEventsTools },
     { to: '/events/timeline', label: 'Events Gantt', icon: GanttChart, show: showEventsTools },
-    { to: '/clubs', label: 'Clubs & Meetings', icon: Users, show: user?.role !== 'Unassigned' },
+    { to: '/clubs', label: 'Student Clubs', icon: Users, show: user?.role !== 'Unassigned' },
+    { to: '/meetings', label: 'CLC Meetings', icon: CalendarClock, show: user?.role !== 'Unassigned' },
     { to: '/tasks', label: 'Tasks', icon: CheckSquare, show: user?.role !== 'Unassigned' },
     { to: '/calendar', label: 'Calendars', icon: Calendar, show: true },
     { to: '/cross-campus', label: 'Cross-Campus', icon: Globe, show: true },

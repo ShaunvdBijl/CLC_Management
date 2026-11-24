@@ -5,7 +5,7 @@ import { apiFetch } from '../lib/api';
 import { isAdmin, isLeadership, useAuth } from '../lib/authContext';
 import { FileDropZone } from '../components/FileDropZone';
 import { downloadProposalTemplate, parseProposalFile } from '../lib/proposalParser';
-import type { CampusEvent, Club, Proposal, ProposalType, ReviewDecision, UserProfile } from '../types/api';
+import type { CampusEvent, Club, Proposal, ProposalType, ReviewDecision } from '../types/api';
 import { StatusPill } from './DashboardPage';
 
 type ProposalFlowMode = 'CampusEvent' | 'ClubRegistration' | 'ClubEvent' | 'Marketing';
@@ -44,7 +44,7 @@ export function ProposalsPage() {
   const [proposedVenue, setProposedVenue] = useState('');
   const [proposedStartAt, setProposedStartAt] = useState('');
   const [proposedEndAt, setProposedEndAt] = useState('');
-  const [proposedClubHeadId, setProposedClubHeadId] = useState('');
+  const [proposedClubHeadName, setProposedClubHeadName] = useState('');
   const [clubWhatTheyDo, setClubWhatTheyDo] = useState('');
   const [clubMeetingSchedule, setClubMeetingSchedule] = useState('');
   const [clubMeetingLocation, setClubMeetingLocation] = useState('');
@@ -57,12 +57,6 @@ export function ProposalsPage() {
   const proposalsQuery = useQuery({
     queryKey: ['proposals', statusFilter],
     queryFn: () => apiFetch<Proposal[]>(`/api/v1/proposals${statusFilter ? `?status=${statusFilter}` : ''}`),
-  });
-
-  const usersQuery = useQuery({
-    queryKey: ['campus-users'],
-    queryFn: () => apiFetch<UserProfile[]>('/api/v1/users'),
-    enabled: canSubmit || leader,
   });
 
   const eventsQuery = useQuery({
@@ -112,7 +106,8 @@ export function ProposalsPage() {
           proposedStartAt: proposedStartAt ? new Date(proposedStartAt).toISOString() : null,
           proposedEndAt: proposedEndAt ? new Date(proposedEndAt).toISOString() : null,
           proposedVenue: proposedVenue || null,
-          proposedClubHeadId: flowMode === 'ClubRegistration' ? proposedClubHeadId || null : null,
+          proposedClubHeadId: null,
+          proposedClubHeadName: flowMode === 'ClubRegistration' ? proposedClubHeadName || null : null,
           targetEventId: flowMode === 'Marketing' ? targetEventId || null : null,
           targetClubId: flowMode === 'ClubEvent' || flowMode === 'Marketing' ? targetClubId || null : null,
           clubWhatTheyDo: flowMode === 'ClubRegistration' ? clubWhatTheyDo || null : null,
@@ -127,6 +122,7 @@ export function ProposalsPage() {
       setProposedVenue('');
       setProposedStartAt('');
       setProposedEndAt('');
+      setProposedClubHeadName('');
       setClubWhatTheyDo('');
       setClubMeetingSchedule('');
       setClubMeetingLocation('');
@@ -163,6 +159,7 @@ export function ProposalsPage() {
           proposedEndAt: p.proposedEndAt,
           proposedVenue: p.proposedVenue,
           proposedClubHeadId: p.proposedClubHeadId,
+          proposedClubHeadName: p.proposedClubHeadName,
           targetEventId: p.targetEventId,
           targetClubId: p.targetClubId,
           clubWhatTheyDo: p.clubWhatTheyDo,
@@ -322,22 +319,16 @@ export function ProposalsPage() {
 
             {flowMode === 'ClubRegistration' && (
               <>
-                <select
-                  required
-                  value={proposedClubHeadId}
-                  onChange={(e) => setProposedClubHeadId(e.target.value)}
-                  className="border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm bg-white"
-                >
-                  <option value="">Select Designated Club Head...</option>
-                  {(usersQuery.data ?? []).map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.fullName} ({u.role})
-                    </option>
-                  ))}
-                </select>
                 <input
                   required
-                  placeholder="When They Meet (e.g., Wednesdays 16:00 - 17:30)"
+                  placeholder="Club Head Full Name (does not need to be CLC)"
+                  value={proposedClubHeadName}
+                  onChange={(e) => setProposedClubHeadName(e.target.value)}
+                  className="border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm"
+                />
+                <input
+                  required
+                  placeholder="When Club Meets (e.g., Wednesdays 16:00 - 17:30)"
                   value={clubMeetingSchedule}
                   onChange={(e) => setClubMeetingSchedule(e.target.value)}
                   className="border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm"

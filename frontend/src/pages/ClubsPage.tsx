@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Clock, MapPin, Sparkles, Users } from 'lucide-react';
+import { Check, Clock, MapPin, Save, Sparkles, Users } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { isLeadership, useAuth } from '../lib/authContext';
-import type { Club, Meeting, UserProfile } from '../types/api';
+import type { Club } from '../types/api';
 
-export function ClubsAndMeetingsPage() {
+export function ClubsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -15,41 +15,26 @@ export function ClubsAndMeetingsPage() {
   const [whatTheyDo, setWhatTheyDo] = useState('');
   const [meetingSchedule, setMeetingSchedule] = useState('');
   const [meetingLocation, setMeetingLocation] = useState('');
-  const [clubHeadId, setClubHeadId] = useState('');
+  const [clubHeadName, setClubHeadName] = useState('');
 
-  // New Club Event state
+  // Inline Club Head edit state
+  const [headDrafts, setHeadDrafts] = useState<Record<string, string>>({});
+  const [savedClubId, setSavedClubId] = useState<string | null>(null);
+
+  // New Club Showcase Event state
   const [eventClubId, setEventClubId] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventVenue, setEventVenue] = useState('');
   const [eventDesc, setEventDesc] = useState('');
   const [eventStartAt, setEventStartAt] = useState('');
   const [eventEndAt, setEventEndAt] = useState('');
-
-  // Campus Meeting state
-  const [title, setTitle] = useState('');
-  const [agenda, setAgenda] = useState('');
-  const [location, setLocation] = useState('');
-  const [startAt, setStartAt] = useState('');
-  const [endAt, setEndAt] = useState('');
   const [error, setError] = useState('');
 
-  const leader = isLeadership(user);
-  const canManageClubs = user?.department === 'Clubs' || leader;
+  const canManageClubs = user?.department === 'Clubs' || isLeadership(user);
 
   const clubsQuery = useQuery({
     queryKey: ['clubs'],
     queryFn: () => apiFetch<Club[]>('/api/v1/clubs'),
-  });
-
-  const meetingsQuery = useQuery({
-    queryKey: ['meetings'],
-    queryFn: () => apiFetch<Meeting[]>('/api/v1/meetings'),
-  });
-
-  const usersQuery = useQuery({
-    queryKey: ['campus-users'],
-    queryFn: () => apiFetch<UserProfile[]>('/api/v1/users'),
-    enabled: canManageClubs,
   });
 
   const createClubMutation = useMutation({
@@ -62,7 +47,7 @@ export function ClubsAndMeetingsPage() {
           whatTheyDo,
           meetingSchedule,
           meetingLocation,
-          clubHeadId,
+          clubHeadName,
         }),
       }),
     onSuccess: () => {
@@ -71,7 +56,7 @@ export function ClubsAndMeetingsPage() {
       setWhatTheyDo('');
       setMeetingSchedule('');
       setMeetingLocation('');
-      setClubHeadId('');
+      setClubHeadName('');
       setError('');
       queryClient.invalidateQueries({ queryKey: ['clubs'] });
     },
@@ -106,37 +91,23 @@ export function ClubsAndMeetingsPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const createMeetingMutation = useMutation({
-    mutationFn: () =>
-      apiFetch<Meeting>('/api/v1/meetings', {
-        method: 'POST',
-        body: JSON.stringify({
-          title,
-          agenda,
-          location,
-          startAt: new Date(startAt).toISOString(),
-          endAt: new Date(endAt).toISOString(),
-        }),
-      }),
-    onSuccess: () => {
-      setTitle('');
-      setAgenda('');
-      setLocation('');
-      setStartAt('');
-      setEndAt('');
-      setError('');
-      queryClient.invalidateQueries({ queryKey: ['meetings'] });
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
   const assignClubHeadMutation = useMutation({
-    mutationFn: ({ clubId, clubHeadId }: { clubId: string; clubHeadId: string }) =>
+    mutationFn: ({ clubId, name }: { clubId: string; name: string }) =>
       apiFetch(`/api/v1/clubs/${clubId}/head`, {
         method: 'PATCH',
-        body: JSON.stringify({ clubHeadId }),
+        body: JSON.stringify({ clubHeadName: name }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clubs'] }),
+    onSuccess: (_, { clubId }) => {
+      setError('');
+      setSavedClubId(clubId);
+      setHeadDrafts((prev) => {
+        const next = { ...prev };
+        delete next[clubId];
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ['clubs'] });
+      setTimeout(() => setSavedClubId((curr) => (curr === clubId ? null : curr)), 2000);
+    },
     onError: (e: Error) => setError(e.message),
   });
 
@@ -145,9 +116,9 @@ export function ClubsAndMeetingsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-extrabold text-[#161616]">Clubs, Club Showcases & Campus Meetings</h1>
+        <h1 className="text-2xl font-extrabold text-[#161616]">Student Clubs &amp; Club Events</h1>
         <p className="text-sm text-[#54595F]">
-          Register campus clubs with full meeting & activity details, schedule club showcase events, and manage leadership meetings.
+          Register campus clubs with their meeting schedule, meeting location, activities, and Club Head (does not need to be a CLC member), and publish club showcase events.
         </p>
       </div>
 
@@ -155,7 +126,6 @@ export function ClubsAndMeetingsPage() {
         <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium">{error}</div>
       )}
 
-      {/* Register Club Form */}
       {canManageClubs && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <form
@@ -194,32 +164,26 @@ export function ClubsAndMeetingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 required
-                placeholder="When They Meet (e.g., Wed 16:00)"
+                placeholder="When Club Meets (e.g., Wed 16:00)"
                 value={meetingSchedule}
                 onChange={(e) => setMeetingSchedule(e.target.value)}
                 className="border border-neutral-300 rounded-xl px-3.5 py-2 text-sm"
               />
               <input
                 required
-                placeholder="Where They Meet (e.g., Lab B2)"
+                placeholder="Where Club Meets (e.g., Lab B2)"
                 value={meetingLocation}
                 onChange={(e) => setMeetingLocation(e.target.value)}
                 className="border border-neutral-300 rounded-xl px-3.5 py-2 text-sm"
               />
             </div>
-            <select
+            <input
               required
-              value={clubHeadId}
-              onChange={(e) => setClubHeadId(e.target.value)}
-              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm bg-white"
-            >
-              <option value="">Assign Club Head...</option>
-              {(usersQuery.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.fullName} ({u.role})
-                </option>
-              ))}
-            </select>
+              placeholder="Club Head Full Name (does not need to be CLC)"
+              value={clubHeadName}
+              onChange={(e) => setClubHeadName(e.target.value)}
+              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm"
+            />
             <button
               type="submit"
               disabled={createClubMutation.isPending}
@@ -229,7 +193,6 @@ export function ClubsAndMeetingsPage() {
             </button>
           </form>
 
-          {/* Create Club Event Showcase Form */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -303,133 +266,69 @@ export function ClubsAndMeetingsPage() {
         </div>
       )}
 
-      {/* Registered Clubs Directory */}
       <section className="space-y-3">
         <h2 className="text-lg font-extrabold text-[#161616]">Registered Clubs ({clubs.length})</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {clubs.map((club) => (
-            <div key={club.id} className="bg-white rounded-2xl border border-neutral-200/90 p-5 space-y-3 shadow-xs">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-extrabold text-base text-[#161616]">{club.name}</h3>
-                <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-[#161616] text-[#E9C00E]">
-                  HEAD: {club.clubHeadName}
-                </span>
-              </div>
-              <p className="text-sm text-[#3A3A3A]">{club.description}</p>
-              {club.whatTheyDo && (
-                <p className="text-xs text-[#54595F]">
-                  <strong className="text-[#161616]">What they do:</strong> {club.whatTheyDo}
-                </p>
-              )}
-              <div className="flex flex-wrap gap-3 pt-2 border-t border-neutral-100 text-xs text-[#54595F]">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-[#0170B9]" />
-                  {club.meetingSchedule || 'Schedule TBD'}
-                </span>
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-[#DB3335]" />
-                  {club.meetingLocation || 'Location TBD'}
-                </span>
-              </div>
-              {canManageClubs && (
-                <select
-                  value={club.clubHeadId}
-                  onChange={(e) => assignClubHeadMutation.mutate({ clubId: club.id, clubHeadId: e.target.value })}
-                  className="text-xs border border-neutral-300 rounded-lg px-2.5 py-1.5 bg-white"
-                >
-                  {(usersQuery.data ?? []).map((u) => (
-                    <option key={u.id} value={u.id}>
-                      Assign Head: {u.fullName}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          ))}
-          {clubs.length === 0 && (
-            <p className="text-sm text-[#54595F]">No clubs registered yet.</p>
-          )}
-        </div>
-      </section>
+          {clubs.map((club) => {
+            const draftName = headDrafts[club.id] ?? club.clubHeadName;
+            const dirty = draftName.trim() !== club.clubHeadName.trim() && draftName.trim().length > 0;
+            const isSaved = savedClubId === club.id;
 
-      {/* Campus Meetings Section */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-extrabold text-[#161616] flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-[#DB3335]" />
-          Campus Leadership Meetings
-        </h2>
+            return (
+              <div key={club.id} className="bg-white rounded-2xl border border-neutral-200/90 p-5 space-y-3 shadow-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-extrabold text-base text-[#161616]">{club.name}</h3>
+                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-[#161616] text-[#E9C00E]">
+                    HEAD: {club.clubHeadName}
+                  </span>
+                </div>
+                <p className="text-sm text-[#3A3A3A]">{club.description}</p>
+                {club.whatTheyDo && (
+                  <p className="text-xs text-[#54595F]">
+                    <strong className="text-[#161616]">What they do:</strong> {club.whatTheyDo}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-3 pt-2 border-t border-neutral-100 text-xs text-[#54595F]">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-[#0170B9]" />
+                    Club meets: {club.meetingSchedule || 'TBD'}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-[#DB3335]" />
+                    {club.meetingLocation || 'TBD'}
+                  </span>
+                </div>
 
-        {leader && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              createMeetingMutation.mutate();
-            }}
-            className="bg-white rounded-2xl border border-neutral-200/90 p-5 space-y-3 shadow-xs"
-          >
-            <h3 className="font-bold text-sm text-[#161616]">Schedule New Campus Meeting</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                required
-                placeholder="Meeting Title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="border border-neutral-300 rounded-xl px-3.5 py-2 text-sm"
-              />
-              <input
-                required
-                placeholder="Location (e.g., Boardroom 2B)"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="border border-neutral-300 rounded-xl px-3.5 py-2 text-sm"
-              />
-              <input
-                required
-                type="datetime-local"
-                value={startAt}
-                onChange={(e) => setStartAt(e.target.value)}
-                className="border border-neutral-300 rounded-xl px-3.5 py-2 text-sm"
-              />
-              <input
-                required
-                type="datetime-local"
-                value={endAt}
-                onChange={(e) => setEndAt(e.target.value)}
-                className="border border-neutral-300 rounded-xl px-3.5 py-2 text-sm"
-              />
-            </div>
-            <textarea
-              required
-              rows={2}
-              placeholder="Meeting agenda..."
-              value={agenda}
-              onChange={(e) => setAgenda(e.target.value)}
-              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-xl bg-[#DB3335] text-white text-sm font-bold hover:bg-[#B52325]"
-            >
-              Schedule Meeting
-            </button>
-          </form>
-        )}
-
-        <div className="space-y-3">
-          {(meetingsQuery.data ?? []).map((m) => (
-            <div key={m.id} className="bg-white rounded-2xl border border-neutral-200/90 p-4 flex flex-wrap justify-between gap-2">
-              <div>
-                <h3 className="font-bold text-[#161616]">{m.title}</h3>
-                <p className="text-xs text-[#54595F]">
-                  {m.location} · Scheduled by {m.createdByName}
-                </p>
-                <p className="text-sm text-[#3A3A3A] mt-1">{m.agenda}</p>
+                {canManageClubs && (
+                  <div className="flex items-center gap-2 pt-2">
+                    <input
+                      type="text"
+                      value={draftName}
+                      onChange={(e) => setHeadDrafts((prev) => ({ ...prev, [club.id]: e.target.value }))}
+                      placeholder="Update Club Head name..."
+                      className="flex-1 text-xs border border-neutral-300 rounded-lg px-2.5 py-1.5 bg-white"
+                    />
+                    <button
+                      type="button"
+                      disabled={!dirty && !isSaved}
+                      onClick={() => assignClubHeadMutation.mutate({ clubId: club.id, name: draftName })}
+                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold ${
+                        isSaved
+                          ? 'bg-emerald-600 text-white'
+                          : dirty
+                            ? 'bg-[#DB3335] text-white hover:bg-[#B52325]'
+                            : 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {isSaved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                      {isSaved ? 'Saved' : 'Save Head'}
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="font-mono text-xs font-medium text-[#54595F]">
-                {new Date(m.startAt).toLocaleString()} – {new Date(m.endAt).toLocaleTimeString()}
-              </div>
-            </div>
-          ))}
+            );
+          })}
+          {clubs.length === 0 && <p className="text-sm text-[#54595F]">No clubs registered yet.</p>}
         </div>
       </section>
     </div>

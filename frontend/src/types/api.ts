@@ -131,7 +131,7 @@ export interface Club {
   whatTheyDo: string;
   meetingSchedule: string;
   meetingLocation: string;
-  clubHeadId: string;
+  clubHeadId: string | null;
   clubHeadName: string;
   isActive: boolean;
   createdAt: string;
