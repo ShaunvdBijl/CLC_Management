@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clc_management}
+      POSTGRES_USER: ${POSTGRES_USER:-clc_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clc_dev_password_change_me}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clc_admin} -d ${POSTGRES_DB:-clc_management}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend/ClcManagement.Api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${POSTGRES_DB:-clc_management};Username=${POSTGRES_USER:-clc_admin};Password=${POSTGRES_PASSWORD:-clc_dev_password_change_me}
+      Auth__Mode: ${AUTH_MODE:-DevMock}
+      AzureAd__TenantId: ${AZURE_AD_TENANT_ID:-00000000-0000-0000-0000-000000000000}
+      AzureAd__ClientId: ${AZURE_AD_CLIENT_ID:-00000000-0000-0000-0000-000000000000}
+      AzureAd__Audience: ${AZURE_AD_AUDIENCE:-api://00000000-0000-0000-0000-000000000000}
+      Storage__Provider: ${STORAGE_PROVIDER:-Local}
+      Storage__RootPath: /app/uploads/posters
+      Cors__AllowedOrigins: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost}
+    ports:
+      - "5080:8080"
+    volumes:
+      - poster_uploads:/app/uploads/posters
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_AUTH_MODE: ${VITE_AUTH_MODE:-DevMock}
+        VITE_ENTRA_CLIENT_ID: ${VITE_ENTRA_CLIENT_ID:-00000000-0000-0000-0000-000000000000}
+        VITE_ENTRA_TENANT_ID: ${VITE_ENTRA_TENANT_ID:-00000000-0000-0000-0000-000000000000}
+        VITE_ENTRA_REDIRECT_URI: ${VITE_ENTRA_REDIRECT_URI:-http://localhost}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+volumes:
+  pgdata:
+  poster_uploads:
