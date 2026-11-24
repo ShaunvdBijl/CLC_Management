@@ -29,23 +29,44 @@ public class ProposalsController : ControllerBase
     public async Task<ActionResult<List<ProposalDto>>> GetProposals(
         [FromQuery] ProposalType? type,
         [FromQuery] ProposalStatus? status,
+        [FromQuery] Guid? campusId,
         CancellationToken ct)
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
-        var campusId = actor.RequireCampusId();
 
         IQueryable<Proposal> query = _db.Proposals.AsNoTracking()
-            .Where(p => p.CampusId == campusId)
+            .Include(p => p.Campus)
             .Include(p => p.SubmittedBy)
             .Include(p => p.ProposedClubHead)
+            .Include(p => p.TargetEvent)
+            .Include(p => p.TargetClub)
             .Include(p => p.Reviews).ThenInclude(r => r.Reviewer);
 
-        if (!actor.IsLeadership())
+        if (actor.IsAdmin())
         {
-            var allowedType = DepartmentToProposalType(actor.Department);
-            if (!allowedType.HasValue)
-                return Ok(new List<ProposalDto>());
-            query = query.Where(p => p.ProposalType == allowedType.Value);
+            if (campusId.HasValue)
+                query = query.Where(p => p.CampusId == campusId.Value);
+        }
+        else
+        {
+            var actorCampusId = actor.RequireCampusId();
+            query = query.Where(p => p.CampusId == actorCampusId);
+
+            if (!actor.IsLeadership())
+            {
+                if (actor.Department == Department.Clubs)
+                {
+                    query = query.Where(p => p.ProposalType == ProposalType.Club ||
+                                             (p.ProposalType == ProposalType.Event && p.TargetClubId != null));
+                }
+                else
+                {
+                    var allowedType = DepartmentToProposalType(actor.Department);
+                    if (!allowedType.HasValue)
+                        return Ok(new List<ProposalDto>());
+                    query = query.Where(p => p.ProposalType == allowedType.Value);
+                }
+            }
         }
 
         if (type.HasValue)
@@ -66,15 +87,22 @@ public class ProposalsController : ControllerBase
         var proposal = await _db.Proposals.AsNoTracking()
             .Include(p => p.SubmittedBy)
             .Include(p => p.ProposedClubHead)
+            .Include(p => p.TargetEvent)
+            .Include(p => p.TargetClub)
             .Include(p => p.Reviews).ThenInclude(r => r.Reviewer)
             .FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new KeyNotFoundException("Proposal not found.");
 
-        if (proposal.CampusId != campusId)
+        if (proposal.CampusId != campusId && !actor.IsAdmin())
             throw new UnauthorizedAccessException("Cannot access proposals from another campus.");
 
-        if (!actor.IsLeadership() && DepartmentToProposalType(actor.Department) != proposal.ProposalType)
+        var isClubEvent = proposal.ProposalType == ProposalType.Event && proposal.TargetClubId.HasValue;
+        if (!actor.IsLeadership() &&
+            !(actor.Department == Department.Clubs && isClubEvent) &&
+            DepartmentToProposalType(actor.Department) != proposal.ProposalType)
+        {
             throw new UnauthorizedAccessException("You can only view proposals for your department.");
+        }
 
         return Ok(ToDto(proposal));
     }
@@ -85,8 +113,17 @@ public class ProposalsController : ControllerBase
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
         var campusId = actor.RequireCampusId();
 
-        ValidateDepartmentForProposalType(actor, request.ProposalType);
-        ValidateProposalFields(request.ProposalType, request.Title, request.ProposedStartAt, request.ProposedEndAt, request.ProposedVenue, request.ProposedClubHeadId, request.TargetEventId, request.TargetClubId);
+        ValidateDepartmentForProposal(actor, request.ProposalType, request.TargetClubId);
+        ValidateProposalFields(
+            request.ProposalType,
+            request.Title,
+            request.ProposedStartAt,
+            request.ProposedEndAt,
+            request.ProposedVenue,
+            request.ProposedClubHeadId,
+            request.ProposedClubHeadName,
+            request.TargetEventId,
+            request.TargetClubId);
 
         var proposal = new Proposal
         {
@@ -100,15 +137,20 @@ public class ProposalsController : ControllerBase
             ProposedEndAt = request.ProposedEndAt?.ToUniversalTime(),
             ProposedVenue = request.ProposedVenue?.Trim(),
             ProposedClubHeadId = request.ProposedClubHeadId,
+            ProposedClubHeadName = request.ProposedClubHeadName?.Trim(),
             TargetEventId = request.TargetEventId,
-            TargetClubId = request.TargetClubId
+            TargetClubId = request.TargetClubId,
+            ClubWhatTheyDo = request.ClubWhatTheyDo?.Trim(),
+            ClubMeetingSchedule = request.ClubMeetingSchedule?.Trim(),
+            ClubMeetingLocation = request.ClubMeetingLocation?.Trim(),
+            WhatsAppMessage = request.WhatsAppMessage?.Trim()
         };
 
         _db.Proposals.Add(proposal);
         await _db.SaveChangesAsync(ct);
 
         var leaderIds = await _db.Users
-            .Where(u => u.CampusId == campusId && (u.Role == UserRole.CampusHead || u.Role == UserRole.Deputy))
+            .Where(u => u.CampusId == campusId && (u.Role == UserRole.CampusHead || u.Role == UserRole.Deputy || u.Role == UserRole.Admin))
             .Select(u => u.Id)
             .ToListAsync(ct);
 
@@ -134,15 +176,24 @@ public class ProposalsController : ControllerBase
         var proposal = await _db.Proposals.FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new KeyNotFoundException("Proposal not found.");
 
-        if (proposal.CampusId != campusId)
+        if (proposal.CampusId != campusId && !actor.IsAdmin())
             throw new UnauthorizedAccessException("Cannot modify proposals from another campus.");
 
-        ValidateDepartmentForProposalType(actor, proposal.ProposalType);
+        ValidateDepartmentForProposal(actor, proposal.ProposalType, request.TargetClubId ?? proposal.TargetClubId);
 
         if (proposal.Status != ProposalStatus.ChangesRequested)
             throw new InvalidOperationException("Only proposals with status 'ChangesRequested' can be resubmitted.");
 
-        ValidateProposalFields(proposal.ProposalType, request.Title, request.ProposedStartAt, request.ProposedEndAt, request.ProposedVenue, request.ProposedClubHeadId, request.TargetEventId, request.TargetClubId);
+        ValidateProposalFields(
+            proposal.ProposalType,
+            request.Title,
+            request.ProposedStartAt,
+            request.ProposedEndAt,
+            request.ProposedVenue,
+            request.ProposedClubHeadId,
+            request.ProposedClubHeadName,
+            request.TargetEventId,
+            request.TargetClubId);
 
         proposal.Title = request.Title.Trim();
         proposal.Description = request.Description.Trim();
@@ -150,15 +201,20 @@ public class ProposalsController : ControllerBase
         proposal.ProposedEndAt = request.ProposedEndAt?.ToUniversalTime();
         proposal.ProposedVenue = request.ProposedVenue?.Trim();
         proposal.ProposedClubHeadId = request.ProposedClubHeadId;
+        proposal.ProposedClubHeadName = request.ProposedClubHeadName?.Trim();
         proposal.TargetEventId = request.TargetEventId;
         proposal.TargetClubId = request.TargetClubId;
+        proposal.ClubWhatTheyDo = request.ClubWhatTheyDo?.Trim();
+        proposal.ClubMeetingSchedule = request.ClubMeetingSchedule?.Trim();
+        proposal.ClubMeetingLocation = request.ClubMeetingLocation?.Trim();
+        proposal.WhatsAppMessage = request.WhatsAppMessage?.Trim();
         proposal.Status = ProposalStatus.Pending;
         proposal.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
 
         var leaderIds = await _db.Users
-            .Where(u => u.CampusId == campusId && (u.Role == UserRole.CampusHead || u.Role == UserRole.Deputy))
+            .Where(u => u.CampusId == campusId && (u.Role == UserRole.CampusHead || u.Role == UserRole.Deputy || u.Role == UserRole.Admin))
             .Select(u => u.Id)
             .ToListAsync(ct);
 
@@ -180,13 +236,13 @@ public class ProposalsController : ControllerBase
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
         if (!actor.IsLeadership())
-            throw new UnauthorizedAccessException("Only Campus Head or Deputy can review proposals.");
+            throw new UnauthorizedAccessException("Only Campus Head, Deputy, or Admin can review proposals.");
 
         var campusId = actor.RequireCampusId();
         var proposal = await _db.Proposals.FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new KeyNotFoundException("Proposal not found.");
 
-        if (proposal.CampusId != campusId)
+        if (proposal.CampusId != campusId && !actor.IsAdmin())
             throw new UnauthorizedAccessException("Cannot review proposals from another campus.");
 
         if (proposal.Status != ProposalStatus.Pending)
@@ -217,14 +273,21 @@ public class ProposalsController : ControllerBase
 
         if (request.Decision == ReviewDecision.Approved && proposal.ProposalType == ProposalType.Club)
         {
-            var clubHeadId = proposal.ProposedClubHeadId ?? proposal.SubmittedById;
+            var headName = !string.IsNullOrWhiteSpace(proposal.ProposedClubHeadName)
+                ? proposal.ProposedClubHeadName
+                : (await _db.Users.Where(u => u.Id == proposal.ProposedClubHeadId).Select(u => u.FullName).FirstOrDefaultAsync(ct) ?? "TBD");
+
             _db.Clubs.Add(new Club
             {
-                CampusId = campusId,
+                CampusId = proposal.CampusId,
                 SourceProposalId = proposal.Id,
                 Name = proposal.Title,
                 Description = proposal.Description,
-                ClubHeadId = clubHeadId,
+                WhatTheyDo = proposal.ClubWhatTheyDo ?? string.Empty,
+                MeetingSchedule = proposal.ClubMeetingSchedule ?? string.Empty,
+                MeetingLocation = proposal.ClubMeetingLocation ?? string.Empty,
+                ClubHeadId = proposal.ProposedClubHeadId,
+                ClubHeadName = headName,
                 IsActive = true
             });
         }
@@ -233,8 +296,10 @@ public class ProposalsController : ControllerBase
         {
             _db.ActivityLogs.Add(new ActivityLog
             {
-                CampusId = campusId,
-                Department = ProposalTypeToDepartment(proposal.ProposalType),
+                CampusId = proposal.CampusId,
+                Department = proposal.ProposalType == ProposalType.Event && proposal.TargetClubId.HasValue
+                    ? Department.Clubs
+                    : ProposalTypeToDepartment(proposal.ProposalType),
                 ActorId = actor.Id,
                 ActionType = "ProposalApproved",
                 EntityType = "Proposal",
@@ -271,13 +336,22 @@ public class ProposalsController : ControllerBase
 
     private async Task<Proposal> LoadProposalAsync(Guid id, CancellationToken ct) =>
         await _db.Proposals.AsNoTracking()
+            .Include(p => p.Campus)
             .Include(p => p.SubmittedBy)
             .Include(p => p.ProposedClubHead)
+            .Include(p => p.TargetEvent)
+            .Include(p => p.TargetClub)
             .Include(p => p.Reviews).ThenInclude(r => r.Reviewer)
             .FirstAsync(p => p.Id == id, ct);
 
-    private static void ValidateDepartmentForProposalType(User actor, ProposalType type)
+    private static void ValidateDepartmentForProposal(User actor, ProposalType type, Guid? targetClubId)
     {
+        if (actor.IsAdmin()) return;
+
+        // Clubs department may submit Event proposals specifically for a Club (e.g., Robotics Showcase)
+        if (type == ProposalType.Event && targetClubId.HasValue && actor.BelongsToDepartment(Department.Clubs))
+            return;
+
         var requiredDept = ProposalTypeToDepartment(type);
         if (!actor.BelongsToDepartment(requiredDept))
             throw new UnauthorizedAccessException($"Only {requiredDept} department members can submit or edit {type} proposals.");
@@ -290,6 +364,7 @@ public class ProposalsController : ControllerBase
         DateTime? endAt,
         string? venue,
         Guid? clubHeadId,
+        string? clubHeadName,
         Guid? targetEventId,
         Guid? targetClubId)
     {
@@ -305,8 +380,8 @@ public class ProposalsController : ControllerBase
         }
         else if (type == ProposalType.Club)
         {
-            if (!clubHeadId.HasValue)
-                throw new ArgumentException("Club proposals must designate a Club Head.");
+            if (!clubHeadId.HasValue && string.IsNullOrWhiteSpace(clubHeadName))
+                throw new ArgumentException("Club proposals must designate a Club Head name.");
         }
         else if (type == ProposalType.Marketing)
         {
@@ -334,6 +409,7 @@ public class ProposalsController : ControllerBase
     private static ProposalDto ToDto(Proposal p) => new(
         p.Id,
         p.CampusId,
+        p.Campus?.Name ?? string.Empty,
         p.SubmittedById,
         p.SubmittedBy?.FullName ?? string.Empty,
         p.ProposalType.ToString(),
@@ -344,9 +420,15 @@ public class ProposalsController : ControllerBase
         p.ProposedEndAt,
         p.ProposedVenue,
         p.ProposedClubHeadId,
-        p.ProposedClubHead?.FullName,
+        !string.IsNullOrWhiteSpace(p.ProposedClubHeadName) ? p.ProposedClubHeadName : p.ProposedClubHead?.FullName,
         p.TargetEventId,
+        p.TargetEvent?.Title,
         p.TargetClubId,
+        p.TargetClub?.Name,
+        p.ClubWhatTheyDo,
+        p.ClubMeetingSchedule,
+        p.ClubMeetingLocation,
+        p.WhatsAppMessage,
         p.CreatedAt,
         p.UpdatedAt,
         p.Reviews.OrderByDescending(r => r.ReviewedAt)

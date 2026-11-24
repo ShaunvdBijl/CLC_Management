@@ -49,6 +49,7 @@ export interface ProposalReview {
 export interface Proposal {
   id: string;
   campusId: string;
+  campusName: string;
   submittedById: string;
   submittedByName: string;
   proposalType: ProposalType;
@@ -61,7 +62,13 @@ export interface Proposal {
   proposedClubHeadId: string | null;
   proposedClubHeadName: string | null;
   targetEventId: string | null;
+  targetEventTitle: string | null;
   targetClubId: string | null;
+  targetClubName: string | null;
+  clubWhatTheyDo: string | null;
+  clubMeetingSchedule: string | null;
+  clubMeetingLocation: string | null;
+  whatsAppMessage: string | null;
   createdAt: string;
   updatedAt: string;
   reviews: ProposalReview[];
@@ -81,6 +88,8 @@ export interface CampusEvent {
   campusId: string;
   campusName: string;
   sourceProposalId: string | null;
+  clubId: string | null;
+  clubName: string | null;
   title: string;
   description: string;
   venue: string;
@@ -94,6 +103,7 @@ export interface PublicCampusEvent {
   eventId: string;
   campusId: string;
   campusName: string;
+  clubName: string | null;
   title: string;
   description: string;
   venue: string;
@@ -119,7 +129,10 @@ export interface Club {
   campusId: string;
   name: string;
   description: string;
-  clubHeadId: string;
+  whatTheyDo: string;
+  meetingSchedule: string;
+  meetingLocation: string;
+  clubHeadId: string | null;
   clubHeadName: string;
   isActive: boolean;
   createdAt: string;
@@ -134,6 +147,11 @@ export interface Meeting {
   startAt: string;
   endAt: string;
   createdByName: string;
+  teamsJoinUrl: string | null;
+  recordingUrl: string | null;
+  transcriptUrl: string | null;
+  transcriptText: string | null;
+  summarySyncedAt: string | null;
 }
 
 export interface WorkTask {

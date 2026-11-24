@@ -35,7 +35,12 @@ public record CreateProposalRequest(
     string? ProposedVenue,
     Guid? ProposedClubHeadId,
     Guid? TargetEventId,
-    Guid? TargetClubId);
+    Guid? TargetClubId,
+    string? ClubWhatTheyDo = null,
+    string? ClubMeetingSchedule = null,
+    string? ClubMeetingLocation = null,
+    string? WhatsAppMessage = null,
+    string? ProposedClubHeadName = null);
 
 public record ResubmitProposalRequest(
     string Title,
@@ -45,7 +50,12 @@ public record ResubmitProposalRequest(
     string? ProposedVenue,
     Guid? ProposedClubHeadId,
     Guid? TargetEventId,
-    Guid? TargetClubId);
+    Guid? TargetClubId,
+    string? ClubWhatTheyDo = null,
+    string? ClubMeetingSchedule = null,
+    string? ClubMeetingLocation = null,
+    string? WhatsAppMessage = null,
+    string? ProposedClubHeadName = null);
 
 public record ReviewProposalRequest(ReviewDecision Decision, string? Comment);
 
@@ -60,6 +70,7 @@ public record ProposalReviewDto(
 public record ProposalDto(
     Guid Id,
     Guid CampusId,
+    string CampusName,
     Guid SubmittedById,
     string SubmittedByName,
     string ProposalType,
@@ -72,7 +83,13 @@ public record ProposalDto(
     Guid? ProposedClubHeadId,
     string? ProposedClubHeadName,
     Guid? TargetEventId,
+    string? TargetEventTitle,
     Guid? TargetClubId,
+    string? TargetClubName,
+    string? ClubWhatTheyDo,
+    string? ClubMeetingSchedule,
+    string? ClubMeetingLocation,
+    string? WhatsAppMessage,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     List<ProposalReviewDto> Reviews);
@@ -83,7 +100,8 @@ public record CreateEventRequest(
     string Description,
     string Venue,
     DateTime StartAt,
-    DateTime EndAt);
+    DateTime EndAt,
+    Guid? ClubId = null);
 
 public record UpdateEventRequest(
     string Title,
@@ -106,6 +124,8 @@ public record EventDto(
     Guid CampusId,
     string CampusName,
     Guid? SourceProposalId,
+    Guid? ClubId,
+    string? ClubName,
     string Title,
     string Description,
     string Venue,
@@ -118,6 +138,7 @@ public record PublicCampusEventDto(
     Guid EventId,
     Guid CampusId,
     string CampusName,
+    string? ClubName,
     string Title,
     string Description,
     string Venue,
@@ -135,24 +156,60 @@ public record ConflictItemDto(
 
 public record ConflictCheckResponse(bool HasConflict, List<ConflictItemDto> Conflicts);
 
+public record CreateClubRequest(
+    string Name,
+    string Description,
+    string WhatTheyDo,
+    string MeetingSchedule,
+    string MeetingLocation,
+    string ClubHeadName);
+
+public record UpdateClubRequest(
+    string Name,
+    string Description,
+    string WhatTheyDo,
+    string MeetingSchedule,
+    string MeetingLocation,
+    string ClubHeadName);
+
 public record ClubDto(
     Guid Id,
     Guid CampusId,
     string Name,
     string Description,
-    Guid ClubHeadId,
+    string WhatTheyDo,
+    string MeetingSchedule,
+    string MeetingLocation,
+    Guid? ClubHeadId,
     string ClubHeadName,
     bool IsActive,
     DateTime CreatedAt);
 
-public record AssignClubHeadRequest(Guid ClubHeadId);
+public record AssignClubHeadRequest(string ClubHeadName);
 
 public record CreateMeetingRequest(
     string Title,
     string Agenda,
     string Location,
     DateTime StartAt,
-    DateTime EndAt);
+    DateTime EndAt,
+    string? TeamsJoinUrl = null);
+
+public record UpdateMeetingArtifactsRequest(
+    string? TeamsJoinUrl,
+    string? RecordingUrl,
+    string? TranscriptUrl,
+    string? TranscriptText);
+
+public record TeamsMeetingWebhookRequest(
+    Guid? MeetingId,
+    string? CampusCode,
+    string? Title,
+    DateTime? MeetingDate,
+    string? TeamsJoinUrl,
+    string? RecordingUrl,
+    string? TranscriptUrl,
+    string? TranscriptText);
 
 public record MeetingDto(
     Guid Id,
@@ -162,7 +219,12 @@ public record MeetingDto(
     string Location,
     DateTime StartAt,
     DateTime EndAt,
-    string CreatedByName);
+    string CreatedByName,
+    string? TeamsJoinUrl,
+    string? RecordingUrl,
+    string? TranscriptUrl,
+    string? TranscriptText,
+    DateTime? SummarySyncedAt);
 
 public record CreateTaskRequest(
     Guid? EventId,

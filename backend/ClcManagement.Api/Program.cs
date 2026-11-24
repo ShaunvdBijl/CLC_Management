@@ -86,10 +86,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    if (db.Database.IsRelational())
-    {
-        await db.Database.EnsureCreatedAsync();
-    }
+    await DatabaseSchemaSync.EnsureSchemaUpToDateAsync(db);
     await DbSeeder.SeedAsync(db);
 }
 

@@ -2,10 +2,12 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-clc_management}
       POSTGRES_USER: ${POSTGRES_USER:-clc_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clc_dev_password_change_me}
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -31,6 +33,7 @@ services:
       AzureAd__Audience: ${AZURE_AD_AUDIENCE:-api://00000000-0000-0000-0000-000000000000}
       Storage__Provider: ${STORAGE_PROVIDER:-Local}
       Storage__RootPath: /app/uploads/posters
+      TeamsWebhook__Secret: ${TEAMS_WEBHOOK_SECRET:-}
       Cors__AllowedOrigins: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost}
     ports:
       - "5080:8080"
@@ -55,4 +58,6 @@ services:
 
 volumes:
   pgdata:
+    name: clc_management_pgdata
   poster_uploads:
+    name: clc_management_poster_uploads

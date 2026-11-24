@@ -163,11 +163,26 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
         var ptaHead = await SignUpAndPromoteAsync("PTA Head", "pta.head@bc.test", DbSeeder.PretoriaCampusId, UserRole.CampusHead, Department.None);
         var kmpMember = await SignUpAndPromoteAsync("KMP Member", "kmp.member@bc.test", DbSeeder.KemptonParkCampusId, UserRole.DepartmentMember, Department.Clubs);
 
-        // Pretoria Campus Head cannot modify Kempton Park member -> 403
+        // Pretoria Campus Head can ONLY see Pretoria students in /api/v1/users
         var ptaHeadClient = CreateClientAs(ptaHead.Email);
+        var ptaVisibleUsers = await ptaHeadClient.GetFromJsonAsync<List<UserProfileDto>>("/api/v1/users");
+        Assert.DoesNotContain(ptaVisibleUsers!, u => u.CampusName == "Kempton Park Campus");
+
+        // Pretoria Campus Head cannot modify Kempton Park member -> 403
         var crossAttempt = await ptaHeadClient.PatchAsJsonAsync($"/api/v1/users/{kmpMember.Id}/role",
             new UpdateUserRoleRequest(UserRole.ClubsHead, Department.Clubs, DbSeeder.KemptonParkCampusId));
         Assert.Equal(HttpStatusCode.Forbidden, crossAttempt.StatusCode);
+
+        // Deputy can update home-campus member but NOT cross-campus member
+        var ptaDeputy = await SignUpAndPromoteAsync("PTA Deputy", "pta.deputy@bc.test", DbSeeder.PretoriaCampusId, UserRole.Deputy, Department.None);
+        var ptaStudent = await SignUpAndPromoteAsync("PTA Student", "pta.student@bc.test", DbSeeder.PretoriaCampusId, UserRole.Unassigned, Department.None);
+        var deputyClient = CreateClientAs(ptaDeputy.Email);
+        var deputyHomePromo = await deputyClient.PatchAsJsonAsync($"/api/v1/users/{ptaStudent.Id}/role",
+            new UpdateUserRoleRequest(UserRole.DepartmentMember, Department.Events, DbSeeder.PretoriaCampusId));
+        deputyHomePromo.EnsureSuccessStatusCode();
+        var deputyCrossAttempt = await deputyClient.PatchAsJsonAsync($"/api/v1/users/{kmpMember.Id}/role",
+            new UpdateUserRoleRequest(UserRole.DepartmentMember, Department.Events, DbSeeder.KemptonParkCampusId));
+        Assert.Equal(HttpStatusCode.Forbidden, deputyCrossAttempt.StatusCode);
 
         // Pretoria Campus Head cannot promote anyone to Admin -> 403
         var adminAttempt = await ptaHeadClient.PatchAsJsonAsync($"/api/v1/users/{ptaHead.Id}/role",
@@ -296,11 +311,25 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
         var eventsClient = CreateClientAs(ptaEvents.Email);
         var memberClient = CreateClientAs(ptaMember.Email);
 
-        // Schedule meeting -> notification
+        // Schedule meeting with Teams link -> notification -> post recording & transcript
         var mtgRes = await headClient.PostAsJsonAsync("/api/v1/meetings", new CreateMeetingRequest(
-            "CLC Quarterly Sync", "Review campus calendars.", "Boardroom 1",
-            DateTime.UtcNow.AddDays(3), DateTime.UtcNow.AddDays(3).AddHours(1)));
+            "CLC Quarterly Sync", "Review campus calendars.", "Microsoft Teams",
+            DateTime.UtcNow.AddDays(3), DateTime.UtcNow.AddDays(3).AddHours(1),
+            "https://teams.microsoft.com/l/meetup-join/example-sync"));
         Assert.Equal(HttpStatusCode.Created, mtgRes.StatusCode);
+        var mtg = (await mtgRes.Content.ReadFromJsonAsync<MeetingDto>())!;
+        Assert.Contains("teams.microsoft.com", mtg.TeamsJoinUrl);
+
+        var artifactsRes = await headClient.PatchAsJsonAsync($"/api/v1/meetings/{mtg.Id}/artifacts",
+            new UpdateMeetingArtifactsRequest(
+                mtg.TeamsJoinUrl,
+                "https://belgiumcampus.sharepoint.com/recordings/clc-sync.mp4",
+                null,
+                "00:00:01 Nadia: Welcome to the CLC Quarterly Sync."));
+        artifactsRes.EnsureSuccessStatusCode();
+        var syncedMtg = (await artifactsRes.Content.ReadFromJsonAsync<MeetingDto>())!;
+        Assert.NotNull(syncedMtg.SummarySyncedAt);
+        Assert.Contains("Quarterly Sync", syncedMtg.TranscriptText);
 
         // Assign task -> notification -> Done -> ActivityLog
         var taskRes = await eventsClient.PostAsJsonAsync("/api/v1/tasks", new CreateTaskRequest(
@@ -326,6 +355,54 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
         (await eventsClient.GetAsync("/api/v1/tasks")).EnsureSuccessStatusCode();
         sw.Stop();
         Assert.True(sw.Elapsed.TotalMilliseconds / 3.0 < 500);
+    }
+
+    [Fact]
+    public async Task TC08_ClubDetails_ClubShowcaseEvent_AndMarketingWhatsAppCampaign_WorkEndToEnd()
+    {
+        var clubsHead = await SignUpAndPromoteAsync("PTA Clubs 2", "pta.clubs2@bc.test", DbSeeder.PretoriaCampusId, UserRole.ClubsHead, Department.Clubs);
+        var mktHead = await SignUpAndPromoteAsync("PTA Mkt 2", "pta.mkt2@bc.test", DbSeeder.PretoriaCampusId, UserRole.MarketingHead, Department.Marketing);
+
+        var clubsClient = CreateClientAs(clubsHead.Email);
+        var mktClient = CreateClientAs(mktHead.Email);
+
+        // Register club with full details + non-CLC Club Head text name
+        var clubRes = await clubsClient.PostAsJsonAsync("/api/v1/clubs", new CreateClubRequest(
+            "Robotics Club",
+            "Autonomous robotics engineering society.",
+            "Build and program competition robots.",
+            "Wednesdays 16:00 - 17:30",
+            "Robotics Lab B2",
+            "Jaco Pietersen"));
+        Assert.Equal(HttpStatusCode.Created, clubRes.StatusCode);
+        var club = (await clubRes.Content.ReadFromJsonAsync<ClubDto>())!;
+        Assert.Equal("Robotics Lab B2", club.MeetingLocation);
+        Assert.Equal("Jaco Pietersen", club.ClubHeadName);
+
+        // Clubs dept publishes a Club Showcase Event
+        var evRes = await clubsClient.PostAsJsonAsync("/api/v1/events", new CreateEventRequest(
+            null,
+            "Robotics Club Showcase",
+            "Live robot demos by students.",
+            "Innovation Hall",
+            DateTime.UtcNow.AddDays(8),
+            DateTime.UtcNow.AddDays(8).AddHours(3),
+            club.Id));
+        Assert.Equal(HttpStatusCode.Created, evRes.StatusCode);
+        var clubEvent = (await evRes.Content.ReadFromJsonAsync<EventDto>())!;
+        Assert.Equal("Robotics Club", clubEvent.ClubName);
+
+        // Marketing submits campaign with WhatsApp promo message
+        var mktRes = await mktClient.PostAsJsonAsync("/api/v1/proposals", new CreateProposalRequest(
+            ProposalType.Marketing,
+            "Robotics Showcase Campaign",
+            "Posters and WhatsApp group promo.",
+            null, null, null, null,
+            clubEvent.Id, club.Id,
+            WhatsAppMessage: "Join the Robotics Club Showcase this Friday at Innovation Hall!"));
+        Assert.Equal(HttpStatusCode.Created, mktRes.StatusCode);
+        var mktProp = (await mktRes.Content.ReadFromJsonAsync<ProposalDto>())!;
+        Assert.Contains("Innovation Hall", mktProp.WhatsAppMessage);
     }
 
     private static MultipartFormDataContent CreateImageForm(byte[] bytes, string fileName, string contentType)
