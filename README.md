@@ -10,6 +10,44 @@ Centralized operations platform for the Campus Leadership Council (CLC) built wi
 
 ---
 
+## Quick Start (Docker Compose)
+
+1. Copy the environment template:
+   ```bash
+   cp .env.example .env
+   ```
+2. Build and start PostgreSQL, the .NET 10 API, and the React Nginx frontend:
+   ```bash
+   docker compose up --build
+   ```
+3. Access the platform:
+   - **Frontend SPA:** `http://localhost:3000`
+   - **API Health Check:** `http://localhost:5080/health`
+
+> **Development Role Switcher:** When `AUTH_MODE=DevMock` and `ASPNETCORE_ENVIRONMENT=Development`, use the dropdown in the top header to switch between seeded users across **Main Campus** and **North Campus** across all 6 CLC roles. Set `AUTH_MODE=EntraId` and configure `AZURE_AD_*` / `VITE_ENTRA_*` for Microsoft Entra ID in production.
+
+---
+
+## Local Development (Without Docker)
+
+### Backend (.NET 10)
+```bash
+cd backend
+dotnet restore
+dotnet test
+dotnet run --project ClcManagement.Api --urls http://localhost:5080
+```
+
+### Frontend (React + Vite)
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+Open `http://localhost:5173`.
+
+---
+
 ## Git Branching & Workflow Rules
 
 This repository follows a strict 4-tier promotion flow enforced by GitHub Actions:
@@ -26,10 +64,6 @@ feature branches (branched off dev)
 
 ### Contribution Rules
 1. **Never push directly** to `main`, `docker`, or `dev`.
-2. **Branch from `dev`** using typed kebab-case names (e.g., `feat/backend-auth-rbac`, `feat/proposals-workflow`, `chore/docker-compose`).
+2. **Branch from `dev`** using typed kebab-case names (e.g., `feat/backend-core-api`, `feat/frontend-spa`, `chore/docker-staging-setup`).
 3. **Use Conventional Commits** for commit messages and PR titles (`feat:`, `fix:`, `docs:`, `chore:`, `ci:`, `test:`, `refactor:`, `security:`).
-4. **All automated checks must pass** before merging:
-   - Branch-flow guard, `.NET 10` build/tests, and `React/TypeScript` build (`.github/workflows/ci.yml`)
-   - Gitleaks secret scanning, dependency audit, and CodeQL SAST (`.github/workflows/security.yml`)
-   - Docker Compose validation & Trivy scan on `docker` / `main` (`.github/workflows/docker-staging.yml`)
-   - Conventional Commit PR title validation (`.github/workflows/commit-lint.yml`)
+4. **All automated checks must pass** before merging (`CI`, `Security`, `Docker Staging`, and `Commit Lint`).

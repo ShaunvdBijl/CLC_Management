@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-bc-dark: #161616;
+  --color-bc-charcoal: #222222;
+  --color-bc-red: #DB3335;
+  --color-bc-red-dark: #B52325;
+  --color-bc-gold: #E9C00E;
+  --color-bc-teal: #4AC1C1;
+  --color-bc-berry: #AD0151;
+  --color-bc-blue: #0170B9;
+  --color-bc-surface: #F4F4F2;
+  --color-bc-muted: #54595F;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+  }
+}
+
+.bc-tricolour-bar {
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    #161616 0%,
+    #161616 33.33%,
+    #E9C00E 33.33%,
+    #E9C00E 66.66%,
+    #DB3335 66.66%,
+    #DB3335 100%
+  );
+}
+
+.bc-dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
