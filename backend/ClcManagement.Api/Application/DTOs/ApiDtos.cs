@@ -191,7 +191,24 @@ public record CreateMeetingRequest(
     string Agenda,
     string Location,
     DateTime StartAt,
-    DateTime EndAt);
+    DateTime EndAt,
+    string? TeamsJoinUrl = null);
+
+public record UpdateMeetingArtifactsRequest(
+    string? TeamsJoinUrl,
+    string? RecordingUrl,
+    string? TranscriptUrl,
+    string? TranscriptText);
+
+public record TeamsMeetingWebhookRequest(
+    Guid? MeetingId,
+    string? CampusCode,
+    string? Title,
+    DateTime? MeetingDate,
+    string? TeamsJoinUrl,
+    string? RecordingUrl,
+    string? TranscriptUrl,
+    string? TranscriptText);
 
 public record MeetingDto(
     Guid Id,
@@ -201,7 +218,12 @@ public record MeetingDto(
     string Location,
     DateTime StartAt,
     DateTime EndAt,
-    string CreatedByName);
+    string CreatedByName,
+    string? TeamsJoinUrl,
+    string? RecordingUrl,
+    string? TranscriptUrl,
+    string? TranscriptText,
+    DateTime? SummarySyncedAt);
 
 public record CreateTaskRequest(
     Guid? EventId,

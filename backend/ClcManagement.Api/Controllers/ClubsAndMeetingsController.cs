@@ -17,12 +17,18 @@ public class ClubsAndMeetingsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly INotificationService _notifications;
+    private readonly IConfiguration _config;
 
-    public ClubsAndMeetingsController(AppDbContext db, ICurrentUserService currentUser, INotificationService notifications)
+    public ClubsAndMeetingsController(
+        AppDbContext db,
+        ICurrentUserService currentUser,
+        INotificationService notifications,
+        IConfiguration config)
     {
         _db = db;
         _currentUser = currentUser;
         _notifications = notifications;
+        _config = config;
     }
 
     [HttpGet("clubs")]
@@ -152,10 +158,8 @@ public class ClubsAndMeetingsController : ControllerBase
         if (to.HasValue)
             query = query.Where(m => m.StartAt <= to.Value.ToUniversalTime());
 
-        var meetings = await query.OrderBy(m => m.StartAt).ToListAsync(ct);
-        return Ok(meetings.Select(m => new MeetingDto(
-            m.Id, m.CampusId, m.Title, m.Agenda, m.Location, m.StartAt, m.EndAt, m.CreatedBy?.FullName ?? string.Empty
-        )).ToList());
+        var meetings = await query.OrderByDescending(m => m.StartAt).ToListAsync(ct);
+        return Ok(meetings.Select(ToMeetingDto).ToList());
     }
 
     [HttpPost("meetings")]
@@ -182,7 +186,8 @@ public class ClubsAndMeetingsController : ControllerBase
             Agenda = request.Agenda.Trim(),
             Location = request.Location.Trim(),
             StartAt = startUtc,
-            EndAt = endUtc
+            EndAt = endUtc,
+            TeamsJoinUrl = string.IsNullOrWhiteSpace(request.TeamsJoinUrl) ? null : request.TeamsJoinUrl.Trim()
         };
 
         _db.Meetings.Add(meeting);
@@ -202,8 +207,86 @@ public class ClubsAndMeetingsController : ControllerBase
             meeting.Id,
             ct);
 
-        return CreatedAtAction(nameof(GetMeetings), new { id = meeting.Id },
-            new MeetingDto(meeting.Id, meeting.CampusId, meeting.Title, meeting.Agenda, meeting.Location, meeting.StartAt, meeting.EndAt, actor.FullName));
+        meeting.CreatedBy = actor;
+        return CreatedAtAction(nameof(GetMeetings), new { id = meeting.Id }, ToMeetingDto(meeting));
+    }
+
+    [HttpPatch("meetings/{id:guid}/artifacts")]
+    public async Task<ActionResult<MeetingDto>> UpdateMeetingArtifacts(
+        Guid id,
+        [FromBody] UpdateMeetingArtifactsRequest request,
+        CancellationToken ct)
+    {
+        var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
+        if (!actor.IsLeadership())
+            throw new UnauthorizedAccessException("Only Campus Head, Deputy, or Admin can post meeting recordings and transcripts.");
+
+        var campusId = actor.RequireCampusId();
+        var meeting = await _db.Meetings.Include(m => m.CreatedBy)
+            .FirstOrDefaultAsync(m => m.Id == id, ct)
+            ?? throw new KeyNotFoundException("Meeting not found.");
+
+        if (meeting.CampusId != campusId && !actor.IsAdmin())
+            throw new UnauthorizedAccessException("Cannot update meetings from another campus.");
+
+        meeting.TeamsJoinUrl = string.IsNullOrWhiteSpace(request.TeamsJoinUrl) ? meeting.TeamsJoinUrl : request.TeamsJoinUrl.Trim();
+        meeting.RecordingUrl = string.IsNullOrWhiteSpace(request.RecordingUrl) ? null : request.RecordingUrl.Trim();
+        meeting.TranscriptUrl = string.IsNullOrWhiteSpace(request.TranscriptUrl) ? null : request.TranscriptUrl.Trim();
+        meeting.TranscriptText = string.IsNullOrWhiteSpace(request.TranscriptText) ? null : request.TranscriptText.Trim();
+        meeting.SummarySyncedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(ToMeetingDto(meeting));
+    }
+
+    [HttpPost("meetings/teams-webhook")]
+    [AllowAnonymous]
+    public async Task<ActionResult<MeetingDto>> TeamsMeetingWebhook(
+        [FromHeader(Name = "X-Teams-Webhook-Secret")] string? secret,
+        [FromBody] TeamsMeetingWebhookRequest request,
+        CancellationToken ct)
+    {
+        var expected = _config["TeamsWebhook:Secret"] ?? _config["TEAMS_WEBHOOK_SECRET"];
+        if (string.IsNullOrWhiteSpace(expected) || !string.Equals(secret, expected, StringComparison.Ordinal))
+            return Unauthorized(new { detail = "Invalid or unconfigured Teams webhook secret." });
+
+        Meeting? meeting = null;
+        if (request.MeetingId.HasValue)
+        {
+            meeting = await _db.Meetings.Include(m => m.CreatedBy)
+                .FirstOrDefaultAsync(m => m.Id == request.MeetingId.Value, ct);
+        }
+
+        if (meeting is null)
+        {
+            var campus = await _db.Campuses.FirstOrDefaultAsync(
+                c => !string.IsNullOrWhiteSpace(request.CampusCode) && c.Code.ToUpper() == request.CampusCode.Trim().ToUpper(), ct)
+                ?? await _db.Campuses.FirstAsync(ct);
+
+            var fallbackOwner = await _db.Users.FirstAsync(ct);
+            var start = (request.MeetingDate ?? DateTime.UtcNow).ToUniversalTime();
+            meeting = new Meeting
+            {
+                CampusId = campus.Id,
+                CreatedById = fallbackOwner.Id,
+                CreatedBy = fallbackOwner,
+                Title = string.IsNullOrWhiteSpace(request.Title) ? "Microsoft Teams CLC Meeting" : request.Title.Trim(),
+                Agenda = "Synced automatically from Microsoft Teams.",
+                Location = "Microsoft Teams",
+                StartAt = start,
+                EndAt = start.AddHours(1)
+            };
+            _db.Meetings.Add(meeting);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.TeamsJoinUrl)) meeting.TeamsJoinUrl = request.TeamsJoinUrl.Trim();
+        if (!string.IsNullOrWhiteSpace(request.RecordingUrl)) meeting.RecordingUrl = request.RecordingUrl.Trim();
+        if (!string.IsNullOrWhiteSpace(request.TranscriptUrl)) meeting.TranscriptUrl = request.TranscriptUrl.Trim();
+        if (!string.IsNullOrWhiteSpace(request.TranscriptText)) meeting.TranscriptText = request.TranscriptText.Trim();
+        meeting.SummarySyncedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(ToMeetingDto(meeting));
     }
 
     [HttpDelete("meetings/{id:guid}")]
@@ -237,4 +320,19 @@ public class ClubsAndMeetingsController : ControllerBase
         !string.IsNullOrWhiteSpace(c.ClubHeadName) ? c.ClubHeadName : (c.ClubHead?.FullName ?? string.Empty),
         c.IsActive,
         c.CreatedAt);
+
+    private static MeetingDto ToMeetingDto(Meeting m) => new(
+        m.Id,
+        m.CampusId,
+        m.Title,
+        m.Agenda,
+        m.Location,
+        m.StartAt,
+        m.EndAt,
+        m.CreatedBy?.FullName ?? string.Empty,
+        m.TeamsJoinUrl,
+        m.RecordingUrl,
+        m.TranscriptUrl,
+        m.TranscriptText,
+        m.SummarySyncedAt);
 }

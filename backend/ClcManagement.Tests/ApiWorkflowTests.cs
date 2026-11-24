@@ -311,11 +311,25 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
         var eventsClient = CreateClientAs(ptaEvents.Email);
         var memberClient = CreateClientAs(ptaMember.Email);
 
-        // Schedule meeting -> notification
+        // Schedule meeting with Teams link -> notification -> post recording & transcript
         var mtgRes = await headClient.PostAsJsonAsync("/api/v1/meetings", new CreateMeetingRequest(
-            "CLC Quarterly Sync", "Review campus calendars.", "Boardroom 1",
-            DateTime.UtcNow.AddDays(3), DateTime.UtcNow.AddDays(3).AddHours(1)));
+            "CLC Quarterly Sync", "Review campus calendars.", "Microsoft Teams",
+            DateTime.UtcNow.AddDays(3), DateTime.UtcNow.AddDays(3).AddHours(1),
+            "https://teams.microsoft.com/l/meetup-join/example-sync"));
         Assert.Equal(HttpStatusCode.Created, mtgRes.StatusCode);
+        var mtg = (await mtgRes.Content.ReadFromJsonAsync<MeetingDto>())!;
+        Assert.Contains("teams.microsoft.com", mtg.TeamsJoinUrl);
+
+        var artifactsRes = await headClient.PatchAsJsonAsync($"/api/v1/meetings/{mtg.Id}/artifacts",
+            new UpdateMeetingArtifactsRequest(
+                mtg.TeamsJoinUrl,
+                "https://belgiumcampus.sharepoint.com/recordings/clc-sync.mp4",
+                null,
+                "00:00:01 Nadia: Welcome to the CLC Quarterly Sync."));
+        artifactsRes.EnsureSuccessStatusCode();
+        var syncedMtg = (await artifactsRes.Content.ReadFromJsonAsync<MeetingDto>())!;
+        Assert.NotNull(syncedMtg.SummarySyncedAt);
+        Assert.Contains("Quarterly Sync", syncedMtg.TranscriptText);
 
         // Assign task -> notification -> Done -> ActivityLog
         var taskRes = await eventsClient.PostAsJsonAsync("/api/v1/tasks", new CreateTaskRequest(

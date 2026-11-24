@@ -150,6 +150,12 @@ public class Meeting
     public string Location { get; set; } = string.Empty;
     public DateTime StartAt { get; set; }
     public DateTime EndAt { get; set; }
+    public string? TeamsJoinUrl { get; set; }
+    public string? TeamsMeetingId { get; set; }
+    public string? RecordingUrl { get; set; }
+    public string? TranscriptUrl { get; set; }
+    public string? TranscriptText { get; set; }
+    public DateTime? SummarySyncedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
