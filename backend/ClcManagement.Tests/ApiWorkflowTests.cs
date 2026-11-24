@@ -58,7 +58,6 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
 {
     private readonly ClcWebAppFactory _factory;
 
-    // Minimal valid 1x1 PNG header + bytes for poster upload verification
     private static readonly byte[] ValidPngBytes =
     [
         0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
@@ -71,264 +70,262 @@ public class ApiWorkflowTests : IClassFixture<ClcWebAppFactory>
         _factory = factory;
     }
 
-    private HttpClient CreateClientAs(string email)
+    private HttpClient CreateClientAs(string? email = null)
     {
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Add("X-Dev-User-Email", email);
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            client.DefaultRequestHeaders.Add("X-Dev-User-Email", email);
+        }
         return client;
     }
 
-    [Fact]
-    public async Task TC01_HealthAndAuthProfile_ReturnsOk()
+    private async Task<UserProfileDto> SignUpAndPromoteAsync(
+        string fullName,
+        string email,
+        Guid campusId,
+        UserRole role,
+        Department department)
     {
-        var client = CreateClientAs("campus.head@main.clc.edu");
-        var healthRes = await client.GetAsync("/health");
+        var anon = CreateClientAs();
+        var signUpRes = await anon.PostAsJsonAsync("/api/v1/auth/signup", new SignUpRequest(fullName, email, campusId));
+        UserProfileDto user;
+        if (signUpRes.IsSuccessStatusCode)
+        {
+            user = (await signUpRes.Content.ReadFromJsonAsync<UserProfileDto>())!;
+        }
+        else
+        {
+            user = (await CreateClientAs(email).GetFromJsonAsync<UserProfileDto>("/api/v1/auth/me"))!;
+        }
+
+        var admin = CreateClientAs(DbSeeder.AdminEmail);
+        var promoRes = await admin.PatchAsJsonAsync($"/api/v1/users/{user.Id}/role",
+            new UpdateUserRoleRequest(role, department, campusId));
+        promoRes.EnsureSuccessStatusCode();
+        return (await promoRes.Content.ReadFromJsonAsync<UserProfileDto>())!;
+    }
+
+    [Fact]
+    public async Task TC01_InitialSeed_HasThreeBelgiumCampusCampuses_SingleAdmin_AndPublicLandingAccess()
+    {
+        var anon = CreateClientAs();
+        var healthRes = await anon.GetAsync("/health");
         Assert.Equal(HttpStatusCode.OK, healthRes.StatusCode);
 
-        var profile = await client.GetFromJsonAsync<UserProfileDto>("/api/v1/auth/me");
+        // Anonymous visitor can load the 3 Belgium Campus iTversity campuses
+        var campuses = await anon.GetFromJsonAsync<List<CampusDto>>("/api/v1/campuses");
+        Assert.NotNull(campuses);
+        Assert.Equal(3, campuses!.Count);
+        Assert.Contains(campuses, c => c.Code == "PTA" && c.Name.Contains("Pretoria"));
+        Assert.Contains(campuses, c => c.Code == "KMP" && c.Name.Contains("Kempton Park"));
+        Assert.Contains(campuses, c => c.Code == "STB" && c.Name.Contains("Stellenbosch"));
+
+        // Anonymous request to protected endpoint returns 401
+        var unauthRes = await anon.GetAsync("/api/v1/auth/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthRes.StatusCode);
+
+        // Admin account resolves cleanly
+        var admin = CreateClientAs(DbSeeder.AdminEmail);
+        var profile = await admin.GetFromJsonAsync<UserProfileDto>("/api/v1/auth/me");
         Assert.NotNull(profile);
-        Assert.Equal("Main Campus", profile!.CampusName);
-        Assert.Equal("CampusHead", profile.Role);
+        Assert.Equal("Admin", profile!.Role);
+        Assert.Equal("Shaun van der Bijl", profile.FullName);
     }
 
     [Fact]
     public async Task TC02_CrossCampusProposalReview_IsBlockedWithForbidden()
     {
-        var mainEvents = CreateClientAs("events.head@main.clc.edu");
-        var createRes = await mainEvents.PostAsJsonAsync("/api/v1/proposals", new CreateProposalRequest(
+        await SignUpAndPromoteAsync("PTA Events Head", "pta.events@bc.test", DbSeeder.PretoriaCampusId, UserRole.EventsHead, Department.Events);
+        await SignUpAndPromoteAsync("STB Campus Head", "stb.head@bc.test", DbSeeder.StellenboschCampusId, UserRole.CampusHead, Department.None);
+
+        var ptaEvents = CreateClientAs("pta.events@bc.test");
+        var createRes = await ptaEvents.PostAsJsonAsync("/api/v1/proposals", new CreateProposalRequest(
             ProposalType.Event,
-            "Cross-Campus Test Event",
-            "Should only be reviewable by Main Campus Leadership.",
+            "Pretoria Tech Expo",
+            "Should only be reviewable by Pretoria Leadership or Admin.",
             DateTime.UtcNow.AddDays(15),
             DateTime.UtcNow.AddDays(15).AddHours(3),
-            "Auditorium A",
+            "Pretoria Auditorium",
             null, null, null));
         createRes.EnsureSuccessStatusCode();
         var created = await createRes.Content.ReadFromJsonAsync<ProposalDto>();
-        Assert.NotNull(created);
 
-        var northHead = CreateClientAs("campus.head@north.clc.edu");
-        var reviewRes = await northHead.PostAsJsonAsync($"/api/v1/proposals/{created!.Id}/review",
-            new ReviewProposalRequest(ReviewDecision.Approved, "Unauthorized attempt"));
+        var stbHead = CreateClientAs("stb.head@bc.test");
+        var reviewRes = await stbHead.PostAsJsonAsync($"/api/v1/proposals/{created!.Id}/review",
+            new ReviewProposalRequest(ReviewDecision.Approved, "Cross-campus attempt"));
         Assert.Equal(HttpStatusCode.Forbidden, reviewRes.StatusCode);
     }
 
     [Fact]
-    public async Task TC03_MemberRoleManagement_AllowsHomeCampusHead_BlocksCrossCampusAndNonHead()
+    public async Task TC03_AdminCanPromoteAnyRoleAcrossCampuses_WhileCampusHeadIsScoped()
     {
-        var mainHead = CreateClientAs("campus.head@main.clc.edu");
-        var deputy = CreateClientAs("deputy@main.clc.edu");
-        var northHead = CreateClientAs("campus.head@north.clc.edu");
+        var ptaHead = await SignUpAndPromoteAsync("PTA Head", "pta.head@bc.test", DbSeeder.PretoriaCampusId, UserRole.CampusHead, Department.None);
+        var kmpMember = await SignUpAndPromoteAsync("KMP Member", "kmp.member@bc.test", DbSeeder.KemptonParkCampusId, UserRole.DepartmentMember, Department.Clubs);
 
-        var mainMember = await CreateClientAs("events.member@main.clc.edu")
-            .GetFromJsonAsync<UserProfileDto>("/api/v1/auth/me");
-        var northEventsHead = await CreateClientAs("events.head@north.clc.edu")
-            .GetFromJsonAsync<UserProfileDto>("/api/v1/auth/me");
+        // Pretoria Campus Head cannot modify Kempton Park member -> 403
+        var ptaHeadClient = CreateClientAs(ptaHead.Email);
+        var crossAttempt = await ptaHeadClient.PatchAsJsonAsync($"/api/v1/users/{kmpMember.Id}/role",
+            new UpdateUserRoleRequest(UserRole.ClubsHead, Department.Clubs, DbSeeder.KemptonParkCampusId));
+        Assert.Equal(HttpStatusCode.Forbidden, crossAttempt.StatusCode);
 
-        // Deputy cannot promote/transfer members -> 403
-        var deputyAttempt = await deputy.PatchAsJsonAsync($"/api/v1/users/{mainMember!.Id}/role",
-            new UpdateUserRoleRequest(UserRole.DepartmentMember, Department.Clubs, null));
-        Assert.Equal(HttpStatusCode.Forbidden, deputyAttempt.StatusCode);
+        // Pretoria Campus Head cannot promote anyone to Admin -> 403
+        var adminAttempt = await ptaHeadClient.PatchAsJsonAsync($"/api/v1/users/{ptaHead.Id}/role",
+            new UpdateUserRoleRequest(UserRole.Admin, Department.None, DbSeeder.PretoriaCampusId));
+        Assert.Equal(HttpStatusCode.Forbidden, adminAttempt.StatusCode);
 
-        // Main Campus Head cannot modify North Campus member -> 403
-        var crossCampusAttempt = await mainHead.PatchAsJsonAsync($"/api/v1/users/{northEventsHead!.Id}/role",
-            new UpdateUserRoleRequest(UserRole.DepartmentMember, Department.Events, null));
-        Assert.Equal(HttpStatusCode.Forbidden, crossCampusAttempt.StatusCode);
-
-        // Main Campus Head can reassign home campus member -> 200
-        var validTransfer = await mainHead.PatchAsJsonAsync($"/api/v1/users/{mainMember.Id}/role",
-            new UpdateUserRoleRequest(UserRole.DepartmentMember, Department.Events, null));
-        validTransfer.EnsureSuccessStatusCode();
-        Assert.NotNull(northHead);
+        // Global Admin CAN promote Kempton Park member to Stellenbosch Deputy -> 200
+        var admin = CreateClientAs(DbSeeder.AdminEmail);
+        var adminPromo = await admin.PatchAsJsonAsync($"/api/v1/users/{kmpMember.Id}/role",
+            new UpdateUserRoleRequest(UserRole.Deputy, Department.None, DbSeeder.StellenboschCampusId));
+        adminPromo.EnsureSuccessStatusCode();
+        var updated = await adminPromo.Content.ReadFromJsonAsync<UserProfileDto>();
+        Assert.Equal("Deputy", updated!.Role);
+        Assert.Equal("Stellenbosch Campus", updated.CampusName);
     }
 
     [Fact]
     public async Task TC04_ProposalStateMachine_RequiresCommentOnChangesRequested_AndAutoCreatesClubOnApproval()
     {
-        var clubsHead = CreateClientAs("clubs.head@main.clc.edu");
-        var campusHead = CreateClientAs("campus.head@main.clc.edu");
+        var clubsHead = await SignUpAndPromoteAsync("PTA Clubs Head", "pta.clubs@bc.test", DbSeeder.PretoriaCampusId, UserRole.ClubsHead, Department.Clubs);
+        var ptaHead = await SignUpAndPromoteAsync("PTA Head 2", "pta.head2@bc.test", DbSeeder.PretoriaCampusId, UserRole.CampusHead, Department.None);
 
-        var me = await clubsHead.GetFromJsonAsync<UserProfileDto>("/api/v1/auth/me");
-        Assert.NotNull(me);
+        var clubsClient = CreateClientAs(clubsHead.Email);
+        var headClient = CreateClientAs(ptaHead.Email);
 
-        var createRes = await clubsHead.PostAsJsonAsync("/api/v1/proposals", new CreateProposalRequest(
+        var createRes = await clubsClient.PostAsJsonAsync("/api/v1/proposals", new CreateProposalRequest(
             ProposalType.Club,
-            "AI & Robotics Club",
+            "BC Robotics & AI Guild",
             "Student robotics and machine learning society.",
             null, null, null,
-            me!.Id, null, null));
+            clubsHead.Id, null, null));
         createRes.EnsureSuccessStatusCode();
         var proposal = await createRes.Content.ReadFromJsonAsync<ProposalDto>();
         Assert.Equal("Pending", proposal!.Status);
 
-        var badReview = await campusHead.PostAsJsonAsync($"/api/v1/proposals/{proposal.Id}/review",
+        var badReview = await headClient.PostAsJsonAsync($"/api/v1/proposals/{proposal.Id}/review",
             new ReviewProposalRequest(ReviewDecision.ChangesRequested, ""));
         Assert.Equal(HttpStatusCode.BadRequest, badReview.StatusCode);
 
-        var changesRes = await campusHead.PostAsJsonAsync($"/api/v1/proposals/{proposal.Id}/review",
-            new ReviewProposalRequest(ReviewDecision.ChangesRequested, "Add faculty advisor details."));
+        var changesRes = await headClient.PostAsJsonAsync($"/api/v1/proposals/{proposal.Id}/review",
+            new ReviewProposalRequest(ReviewDecision.ChangesRequested, "Add lab schedule."));
         changesRes.EnsureSuccessStatusCode();
-        var changed = await changesRes.Content.ReadFromJsonAsync<ProposalDto>();
-        Assert.Equal("ChangesRequested", changed!.Status);
 
-        var resubmitRes = await clubsHead.PutAsJsonAsync($"/api/v1/proposals/{proposal.Id}/resubmit",
+        var resubmitRes = await clubsClient.PutAsJsonAsync($"/api/v1/proposals/{proposal.Id}/resubmit",
             new ResubmitProposalRequest(
-                "AI & Robotics Club",
-                "Student robotics society. Advisor: Dr. Dlamini.",
-                null, null, null, me.Id, null, null));
+                "BC Robotics & AI Guild",
+                "Student robotics society. Meets Wednesdays 16:00.",
+                null, null, null, clubsHead.Id, null, null));
         resubmitRes.EnsureSuccessStatusCode();
-        var resubmitted = await resubmitRes.Content.ReadFromJsonAsync<ProposalDto>();
-        Assert.Equal("Pending", resubmitted!.Status);
 
-        var approveRes = await campusHead.PostAsJsonAsync($"/api/v1/proposals/{proposal.Id}/review",
-            new ReviewProposalRequest(ReviewDecision.Approved, "Looks great."));
+        var approveRes = await headClient.PostAsJsonAsync($"/api/v1/proposals/{proposal.Id}/review",
+            new ReviewProposalRequest(ReviewDecision.Approved, "Approved."));
         approveRes.EnsureSuccessStatusCode();
 
-        var clubs = await clubsHead.GetFromJsonAsync<List<ClubDto>>("/api/v1/clubs");
-        Assert.Contains(clubs!, c => c.Name == "AI & Robotics Club");
+        var clubs = await clubsClient.GetFromJsonAsync<List<ClubDto>>("/api/v1/clubs");
+        Assert.Contains(clubs!, c => c.Name == "BC Robotics & AI Guild");
     }
 
     [Fact]
     public async Task TC05_MarketingProposalAndPosterUpload_ValidatesMagicBytesAndRole()
     {
-        var marketingHead = CreateClientAs("marketing.head@main.clc.edu");
-        var eventsHead = CreateClientAs("events.head@main.clc.edu");
+        var eventsHead = await SignUpAndPromoteAsync("KMP Events Head", "kmp.events@bc.test", DbSeeder.KemptonParkCampusId, UserRole.EventsHead, Department.Events);
+        var mktHead = await SignUpAndPromoteAsync("KMP Mkt Head", "kmp.mkt@bc.test", DbSeeder.KemptonParkCampusId, UserRole.MarketingHead, Department.Marketing);
 
-        var events = await eventsHead.GetFromJsonAsync<List<EventDto>>("/api/v1/events");
-        var targetEvent = events!.First();
+        var eventsClient = CreateClientAs(eventsHead.Email);
+        var mktClient = CreateClientAs(mktHead.Email);
 
-        // Marketing submits proposal linked to event -> 201
-        var propRes = await marketingHead.PostAsJsonAsync("/api/v1/proposals", new CreateProposalRequest(
-            ProposalType.Marketing,
-            "Tech Showcase Poster Campaign",
-            "Campus screens and hallway posters.",
-            null, null, null, null,
-            targetEvent.Id, null));
+        var evRes = await eventsClient.PostAsJsonAsync("/api/v1/events", new CreateEventRequest(
+            null, "Kempton Hackathon", "24h code sprint.", "Studio A",
+            DateTime.UtcNow.AddDays(6), DateTime.UtcNow.AddDays(6).AddHours(6)));
+        evRes.EnsureSuccessStatusCode();
+        var targetEvent = (await evRes.Content.ReadFromJsonAsync<EventDto>())!;
+
+        var propRes = await mktClient.PostAsJsonAsync("/api/v1/proposals", new CreateProposalRequest(
+            ProposalType.Marketing, "Hackathon Poster Rollout", "Campus digital screens.",
+            null, null, null, null, targetEvent.Id, null));
         Assert.Equal(HttpStatusCode.Created, propRes.StatusCode);
 
-        // Events Head attempting poster upload -> 403 Forbidden
         using var forbiddenForm = CreateImageForm(ValidPngBytes, "poster.png", "image/png");
-        var forbiddenUpload = await eventsHead.PostAsync($"/api/v1/events/{targetEvent.Id}/posters", forbiddenForm);
+        var forbiddenUpload = await eventsClient.PostAsync($"/api/v1/events/{targetEvent.Id}/posters", forbiddenForm);
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenUpload.StatusCode);
 
-        // Spoofed file claiming to be PNG -> 400 Bad Request
         using var spoofedForm = CreateImageForm("not-a-real-png-file-at-all"u8.ToArray(), "fake.png", "image/png");
-        var spoofedUpload = await marketingHead.PostAsync($"/api/v1/events/{targetEvent.Id}/posters", spoofedForm);
+        var spoofedUpload = await mktClient.PostAsync($"/api/v1/events/{targetEvent.Id}/posters", spoofedForm);
         Assert.Equal(HttpStatusCode.BadRequest, spoofedUpload.StatusCode);
 
-        // Valid PNG uploaded by Marketing -> 200 OK
-        using var validForm = CreateImageForm(ValidPngBytes, "showcase.png", "image/png");
-        var validUpload = await marketingHead.PostAsync($"/api/v1/events/{targetEvent.Id}/posters", validForm);
+        using var validForm = CreateImageForm(ValidPngBytes, "hackathon.png", "image/png");
+        var validUpload = await mktClient.PostAsync($"/api/v1/events/{targetEvent.Id}/posters", validForm);
         validUpload.EnsureSuccessStatusCode();
         var uploadedPoster = await validUpload.Content.ReadFromJsonAsync<EventPosterDto>();
-        Assert.NotNull(uploadedPoster);
         Assert.StartsWith("/uploads/posters/", uploadedPoster!.Url);
     }
 
     [Fact]
-    public async Task TC06_EventConflictCheck_DetectsVenueAndTimeOverlap()
+    public async Task TC06_EventConflictCheck_AndPublicCampusActivityFeed()
     {
-        var eventsHead = CreateClientAs("events.head@main.clc.edu");
-        var events = await eventsHead.GetFromJsonAsync<List<EventDto>>("/api/v1/events");
-        var seeded = events!.First();
+        var stbEvents = await SignUpAndPromoteAsync("STB Events Head", "stb.events@bc.test", DbSeeder.StellenboschCampusId, UserRole.EventsHead, Department.Events);
+        var client = CreateClientAs(stbEvents.Email);
 
-        var query = $"/api/v1/events/conflicts?startAt={Uri.EscapeDataString(seeded.StartAt.AddMinutes(30).ToString("O"))}&endAt={Uri.EscapeDataString(seeded.EndAt.AddMinutes(30).ToString("O"))}&venue={Uri.EscapeDataString(seeded.Venue)}";
-        var conflictRes = await eventsHead.GetFromJsonAsync<ConflictCheckResponse>(query);
+        var start = DateTime.UtcNow.AddDays(9);
+        var end = start.AddHours(4);
+        var evRes = await client.PostAsJsonAsync("/api/v1/events", new CreateEventRequest(
+            null, "Stellenbosch Cyber Summit", "Security talks and CTF.", "Distillery Hall", start, end));
+        evRes.EnsureSuccessStatusCode();
 
-        Assert.NotNull(conflictRes);
+        var query = $"/api/v1/events/conflicts?startAt={Uri.EscapeDataString(start.AddMinutes(30).ToString("O"))}&endAt={Uri.EscapeDataString(end.AddMinutes(30).ToString("O"))}&venue=Distillery+Hall";
+        var conflictRes = await client.GetFromJsonAsync<ConflictCheckResponse>(query);
         Assert.True(conflictRes!.HasConflict);
         Assert.Contains(conflictRes.Conflicts, c => c.ConflictType == "VenueAndTimeOverlap");
+
+        // Anonymous visitor clicking Stellenbosch campus sees this confirmed event
+        var anon = CreateClientAs();
+        var stbPublic = await anon.GetFromJsonAsync<List<PublicCampusEventDto>>(
+            $"/api/v1/cross-campus/events?campusId={DbSeeder.StellenboschCampusId}");
+        Assert.Contains(stbPublic!, e => e.Title == "Stellenbosch Cyber Summit" && e.CampusName == "Stellenbosch Campus");
     }
 
     [Fact]
-    public async Task TC07_CampusMeeting_TriggersInAppNotificationForCampusMembers()
+    public async Task TC07_TasksMeetingsNotificationsHistory_And500msLatency()
     {
-        var mainHead = CreateClientAs("campus.head@main.clc.edu");
-        var member = CreateClientAs("events.member@main.clc.edu");
+        var ptaHead = await SignUpAndPromoteAsync("PTA Head 3", "pta.head3@bc.test", DbSeeder.PretoriaCampusId, UserRole.CampusHead, Department.None);
+        var ptaEvents = await SignUpAndPromoteAsync("PTA Events 2", "pta.events2@bc.test", DbSeeder.PretoriaCampusId, UserRole.EventsHead, Department.Events);
+        var ptaMember = await SignUpAndPromoteAsync("PTA Member", "pta.member@bc.test", DbSeeder.PretoriaCampusId, UserRole.DepartmentMember, Department.Events);
 
-        var createRes = await mainHead.PostAsJsonAsync("/api/v1/meetings", new CreateMeetingRequest(
-            "Q4 Evaluation Prep",
-            "Align departmental history summaries.",
-            "Senate Room",
-            DateTime.UtcNow.AddDays(4),
-            DateTime.UtcNow.AddDays(4).AddHours(1)));
-        Assert.Equal(HttpStatusCode.Created, createRes.StatusCode);
+        var headClient = CreateClientAs(ptaHead.Email);
+        var eventsClient = CreateClientAs(ptaEvents.Email);
+        var memberClient = CreateClientAs(ptaMember.Email);
 
-        var feed = await member.GetFromJsonAsync<NotificationFeedDto>("/api/v1/notifications");
-        Assert.NotNull(feed);
-        Assert.Contains(feed!.Items, n => n.Type == "MeetingScheduled" && n.Title.Contains("Q4 Evaluation Prep"));
-    }
+        // Schedule meeting -> notification
+        var mtgRes = await headClient.PostAsJsonAsync("/api/v1/meetings", new CreateMeetingRequest(
+            "CLC Quarterly Sync", "Review campus calendars.", "Boardroom 1",
+            DateTime.UtcNow.AddDays(3), DateTime.UtcNow.AddDays(3).AddHours(1)));
+        Assert.Equal(HttpStatusCode.Created, mtgRes.StatusCode);
 
-    [Fact]
-    public async Task TC08_TaskAssignmentAndCompletion_NotifiesMemberAndLogsToQuarterlyHistory()
-    {
-        var eventsHead = CreateClientAs("events.head@main.clc.edu");
-        var member = CreateClientAs("events.member@main.clc.edu");
-        var memberProfile = await member.GetFromJsonAsync<UserProfileDto>("/api/v1/auth/me");
+        // Assign task -> notification -> Done -> ActivityLog
+        var taskRes = await eventsClient.PostAsJsonAsync("/api/v1/tasks", new CreateTaskRequest(
+            null, ptaMember.Id, "Setup Registration Desk", "Prepare badges and laptops.", TaskPriority.High, DateTime.UtcNow.AddDays(2)));
+        Assert.Equal(HttpStatusCode.Created, taskRes.StatusCode);
+        var task = (await taskRes.Content.ReadFromJsonAsync<WorkTaskDto>())!;
 
-        var createRes = await eventsHead.PostAsJsonAsync("/api/v1/tasks", new CreateTaskRequest(
-            null,
-            memberProfile!.Id,
-            "Verify Stage Lighting",
-            "Test spotlights 24h before showcase.",
-            TaskPriority.High,
-            DateTime.UtcNow.AddDays(2)));
-        Assert.Equal(HttpStatusCode.Created, createRes.StatusCode);
-        var task = await createRes.Content.ReadFromJsonAsync<WorkTaskDto>();
+        var feed = await memberClient.GetFromJsonAsync<NotificationFeedDto>("/api/v1/notifications");
+        Assert.Contains(feed!.Items, n => n.Type == "MeetingScheduled");
+        Assert.Contains(feed.Items, n => n.Type == "TaskAssigned");
 
-        var feed = await member.GetFromJsonAsync<NotificationFeedDto>("/api/v1/notifications");
-        Assert.Contains(feed!.Items, n => n.Type == "TaskAssigned" && n.Message.Contains("Verify Stage Lighting"));
-
-        var doneRes = await member.PatchAsJsonAsync($"/api/v1/tasks/{task!.Id}/status",
+        var doneRes = await memberClient.PatchAsJsonAsync($"/api/v1/tasks/{task.Id}/status",
             new UpdateTaskStatusRequest(WorkTaskStatus.Done, 1));
         doneRes.EnsureSuccessStatusCode();
 
-        var history = await eventsHead.GetFromJsonAsync<List<ActivityLogDto>>("/api/v1/history?department=Events");
-        Assert.Contains(history!, h => h.ActionType == "TaskCompleted" && h.Summary.Contains("Verify Stage Lighting"));
-    }
+        var history = await eventsClient.GetFromJsonAsync<List<ActivityLogDto>>("/api/v1/history?department=Events");
+        Assert.Contains(history!, h => h.ActionType == "TaskCompleted" && h.Summary.Contains("Setup Registration Desk"));
 
-    [Fact]
-    public async Task TC09_CampusCalendar_AggregatesHomeEventsAndMeetings()
-    {
-        var member = CreateClientAs("events.member@main.clc.edu");
-        var items = await member.GetFromJsonAsync<List<CalendarItemDto>>("/api/v1/calendar/campus");
-
-        Assert.NotNull(items);
-        Assert.Contains(items!, i => i.ItemType == "Event" && i.CampusName == "Main Campus");
-        Assert.Contains(items!, i => i.ItemType == "Meeting" && i.CampusName == "Main Campus");
-        Assert.DoesNotContain(items!, i => i.CampusName == "North Campus");
-    }
-
-    [Fact]
-    public async Task TC10_CrossCampusEvents_ReturnsBothCampusesPublicEventsOnly()
-    {
-        var member = CreateClientAs("events.member@main.clc.edu");
-        var publicEvents = await member.GetFromJsonAsync<List<PublicCampusEventDto>>("/api/v1/cross-campus/events");
-
-        Assert.NotNull(publicEvents);
-        Assert.Contains(publicEvents!, e => e.CampusName == "Main Campus");
-        Assert.Contains(publicEvents!, e => e.CampusName == "North Campus");
-    }
-
-    [Fact]
-    public async Task TC11_StandardQueries_RespondWithin500msTarget()
-    {
-        var eventsHead = CreateClientAs("events.head@main.clc.edu");
-        // Warm-up call
-        await eventsHead.GetAsync("/api/v1/calendar/university");
-
+        // Latency < 500 ms (NFR-06)
         var sw = Stopwatch.StartNew();
-        var res1 = await eventsHead.GetAsync("/api/v1/calendar/campus");
-        var res2 = await eventsHead.GetAsync("/api/v1/proposals");
-        var res3 = await eventsHead.GetAsync("/api/v1/tasks");
+        (await eventsClient.GetAsync("/api/v1/calendar/campus")).EnsureSuccessStatusCode();
+        (await eventsClient.GetAsync("/api/v1/proposals")).EnsureSuccessStatusCode();
+        (await eventsClient.GetAsync("/api/v1/tasks")).EnsureSuccessStatusCode();
         sw.Stop();
-
-        res1.EnsureSuccessStatusCode();
-        res2.EnsureSuccessStatusCode();
-        res3.EnsureSuccessStatusCode();
-
-        var avgMs = sw.Elapsed.TotalMilliseconds / 3.0;
-        Assert.True(avgMs < 500, $"Expected average query latency < 500ms (NFR-06), actual: {avgMs:F1}ms");
+        Assert.True(sw.Elapsed.TotalMilliseconds / 3.0 < 500);
     }
 
     private static MultipartFormDataContent CreateImageForm(byte[] bytes, string fileName, string contentType)

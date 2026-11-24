@@ -14,6 +14,18 @@ public record UserProfileDto(
 
 public record UpdateUserRoleRequest(UserRole Role, Department Department, Guid? CampusId);
 
+public record SignUpRequest(string FullName, string Email, Guid? PreferredCampusId);
+
+public record CampusDto(
+    Guid Id,
+    string Name,
+    string Code,
+    string Address,
+    string Province,
+    string ImageUrl,
+    string Description,
+    int ConfirmedEventCount);
+
 public record CreateProposalRequest(
     ProposalType ProposalType,
     string Title,

@@ -4,7 +4,7 @@ import type { WorkTask, WorkTaskStatus } from '../types/api';
 
 const COLUMNS: { key: WorkTaskStatus; label: string; color: string }[] = [
   { key: 'ToDo', label: 'To Do', color: 'border-slate-300 bg-slate-100/70' },
-  { key: 'InProgress', label: 'In Progress', color: 'border-indigo-300 bg-indigo-50/50' },
+  { key: 'InProgress', label: 'In Progress', color: 'border-indigo-300 bg-red-50/50' },
   { key: 'Done', label: 'Done', color: 'border-emerald-300 bg-emerald-50/50' },
 ];
 
@@ -67,7 +67,7 @@ export function EventsKanbanPage() {
                         {t.priority}
                       </span>
                     </div>
-                    {t.eventTitle && <p className="text-xs text-indigo-600 font-medium">{t.eventTitle}</p>}
+                    {t.eventTitle && <p className="text-xs text-[#DB3335] font-medium">{t.eventTitle}</p>}
                     <p className="text-xs text-slate-600">{t.description}</p>
                     <p className="text-[11px] text-slate-500">
                       Assignee: {t.assignedToName}

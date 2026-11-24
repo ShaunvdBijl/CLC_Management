@@ -194,7 +194,7 @@ export function EventsPage() {
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+              className="px-4 py-2 rounded-lg bg-[#DB3335] text-white text-sm font-medium hover:bg-[#B52325]"
             >
               Publish Event
             </button>
@@ -239,7 +239,7 @@ export function EventsPage() {
             )}
 
             {canUploadPoster && (
-              <label className="inline-flex items-center gap-2 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg cursor-pointer">
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-[#DB3335] bg-red-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg cursor-pointer">
                 <Upload className="w-3.5 h-3.5" />
                 Upload Poster (PNG/JPG/WebP)
                 <input

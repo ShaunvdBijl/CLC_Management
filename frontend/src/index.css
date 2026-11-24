@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+@theme {
+  --color-bc-dark: #1E1E1E;
+  --color-bc-charcoal: #2B2B2B;
+  --color-bc-red: #DB3335;
+  --color-bc-red-dark: #B52325;
+  --color-bc-gold: #E9C00E;
+  --color-bc-teal: #4AC1C1;
+  --color-bc-berry: #AD0151;
+  --color-bc-blue: #0170B9;
+  --color-bc-surface: #F5F5F5;
+  --color-bc-muted: #54595F;
+}
+
+.bc-tricolour-bar {
+  height: 4px;
+  background: linear-gradient(90deg, #1E1E1E 0%, #1E1E1E 33.33%, #E9C00E 33.33%, #E9C00E 66.66%, #DB3335 66.66%, #DB3335 100%);
+}

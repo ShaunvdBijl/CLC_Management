@@ -81,19 +81,23 @@ public class CurrentUserService : ICurrentUserService
 
 public static class UserPermissionExtensions
 {
+    public static bool IsAdmin(this User user) => user.Role == UserRole.Admin;
+
     public static bool IsLeadership(this User user) =>
-        user.Role is UserRole.CampusHead or UserRole.Deputy;
+        user.Role is UserRole.Admin or UserRole.CampusHead or UserRole.Deputy;
 
     public static bool IsDepartmentHead(this User user) =>
-        user.Role is UserRole.EventsHead or UserRole.ClubsHead or UserRole.MarketingHead;
+        user.Role is UserRole.Admin or UserRole.EventsHead or UserRole.ClubsHead or UserRole.MarketingHead;
 
     public static bool CanManageDepartment(this User user, Department dept) =>
+        user.Role == UserRole.Admin ||
         (user.Role == UserRole.EventsHead && dept == Department.Events) ||
         (user.Role == UserRole.ClubsHead && dept == Department.Clubs) ||
         (user.Role == UserRole.MarketingHead && dept == Department.Marketing);
 
     public static bool BelongsToDepartment(this User user, Department dept) =>
-        user.Department == dept && user.Role != UserRole.Unassigned;
+        user.Role == UserRole.Admin ||
+        (user.Department == dept && user.Role != UserRole.Unassigned);
 
     public static Guid RequireCampusId(this User user) =>
         user.CampusId ?? throw new UnauthorizedAccessException("Your account has not been assigned to a campus yet.");

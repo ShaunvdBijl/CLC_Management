@@ -130,7 +130,7 @@ export function TasksPage() {
           />
           <button
             type="submit"
-            className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+            className="px-4 py-2 rounded-lg bg-[#DB3335] text-white text-sm font-medium hover:bg-[#B52325]"
           >
             Create & Assign Task
           </button>

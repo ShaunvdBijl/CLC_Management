@@ -5,6 +5,10 @@ public class Campus
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
+    public string Address { get; set; } = string.Empty;
+    public string Province { get; set; } = string.Empty;
+    public string ImageUrl { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<User> Users { get; set; } = new List<User>();

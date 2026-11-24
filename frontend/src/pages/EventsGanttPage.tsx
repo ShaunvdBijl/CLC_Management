@@ -64,7 +64,7 @@ export function EventsGanttPage() {
                     <div
                       style={{ left: `${leftPct}%`, width: `${Math.min(widthPct, 100 - leftPct)}%` }}
                       className={`absolute top-1 bottom-1 rounded-md px-2 flex items-center gap-1 text-xs font-semibold text-white truncate ${
-                        conflicted ? 'bg-rose-600' : 'bg-indigo-600'
+                        conflicted ? 'bg-rose-600' : 'bg-[#DB3335]'
                       }`}
                     >
                       {conflicted && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}

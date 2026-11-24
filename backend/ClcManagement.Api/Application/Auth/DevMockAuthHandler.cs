@@ -24,17 +24,18 @@ public class DevMockAuthHandler : AuthenticationHandler<AuthenticationSchemeOpti
 
         if (string.IsNullOrWhiteSpace(email))
         {
-            email = "campus.head@main.clc.edu";
+            return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        var oid = $"dev-oid:{email.ToLowerInvariant()}";
+        var normalized = email.Trim().ToLowerInvariant();
+        var oid = $"dev-oid:{normalized}";
         var claims = new[]
         {
             new Claim("oid", oid),
             new Claim(ClaimTypes.NameIdentifier, oid),
-            new Claim(ClaimTypes.Email, email),
-            new Claim("preferred_username", email),
-            new Claim("name", email.Split('@')[0])
+            new Claim(ClaimTypes.Email, normalized),
+            new Claim("preferred_username", normalized),
+            new Claim("name", normalized.Split('@')[0])
         };
 
         var identity = new ClaimsIdentity(claims, SchemeName);

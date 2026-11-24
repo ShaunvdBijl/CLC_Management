@@ -234,7 +234,7 @@ export function ProposalsPage() {
           <button
             type="submit"
             disabled={createMutation.isPending}
-            className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-[#DB3335] text-white text-sm font-medium hover:bg-[#B52325] disabled:opacity-50"
           >
             {createMutation.isPending ? 'Submitting...' : `Submit ${defaultType} Proposal`}
           </button>
@@ -316,7 +316,7 @@ export function ProposalsPage() {
               <div className="pt-2 border-t border-slate-100">
                 <button
                   onClick={() => resubmitMutation.mutate(p)}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
+                  className="px-3 py-1.5 rounded-lg bg-[#DB3335] text-white text-xs font-semibold hover:bg-[#B52325]"
                 >
                   Update & Resubmit Proposal
                 </button>
