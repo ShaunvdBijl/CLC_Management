@@ -70,6 +70,7 @@ public record ProposalReviewDto(
 public record ProposalDto(
     Guid Id,
     Guid CampusId,
+    string CampusName,
     Guid SubmittedById,
     string SubmittedByName,
     string ProposalType,

@@ -49,6 +49,7 @@ export interface ProposalReview {
 export interface Proposal {
   id: string;
   campusId: string;
+  campusName: string;
   submittedById: string;
   submittedByName: string;
   proposalType: ProposalType;

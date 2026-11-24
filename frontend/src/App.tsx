@@ -7,6 +7,7 @@ import { CampusActivityPage } from './pages/CampusActivityPage';
 import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProposalsPage } from './pages/ProposalsPage';
+import { ProposalApprovalsPage } from './pages/ProposalApprovalsPage';
 import { EventsPage } from './pages/EventsPage';
 import { EventsKanbanPage } from './pages/EventsKanbanPage';
 import { EventsGanttPage } from './pages/EventsGanttPage';
@@ -51,6 +52,7 @@ export default function App() {
       >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/proposals" element={<ProposalsPage />} />
+        <Route path="/proposals/approvals" element={<ProposalApprovalsPage />} />
         <Route path="/events" element={<EventsPage />} />
         <Route path="/events/board" element={<EventsKanbanPage />} />
         <Route path="/events/timeline" element={<EventsGanttPage />} />

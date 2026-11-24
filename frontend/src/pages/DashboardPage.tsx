@@ -10,7 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
-import { isAdmin, useAuth } from '../lib/authContext';
+import { isAdmin, isLeadership, useAuth } from '../lib/authContext';
 import type { CampusEvent, Proposal, PublicCampusEvent, WorkTask } from '../types/api';
 
 export function DashboardPage() {
@@ -99,7 +99,7 @@ export function DashboardPage() {
       {/* KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <StatCard
-          to="/proposals"
+          to={isLeadership(user) ? '/proposals/approvals' : '/proposals'}
           title="Pending Proposals"
           value={pendingProposals}
           icon={<FileText className="w-5 h-5 text-[#C9A300]" />}

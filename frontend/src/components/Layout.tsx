@@ -6,6 +6,7 @@ import {
   Calendar,
   CalendarClock,
   CheckSquare,
+  ClipboardCheck,
   FileText,
   GanttChart,
   Globe,
@@ -60,7 +61,8 @@ export function Layout() {
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: true },
-    { to: '/proposals', label: 'Proposals', icon: FileText, show: isAssigned },
+    { to: '/proposals/approvals', label: 'Proposal Approvals', icon: ClipboardCheck, show: leader },
+    { to: '/proposals', label: 'Submit Proposals', icon: FileText, show: isAssigned },
     {
       to: '/events',
       label: user?.department === 'Marketing' ? 'Event Posters' : 'Events & Posters',
@@ -207,7 +209,7 @@ export function Layout() {
                 <NavLink
                   key={to}
                   to={to}
-                  end={to === '/events'}
+                  end={to === '/events' || to === '/proposals'}
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold tracking-wide transition-all ${

@@ -29,33 +29,43 @@ public class ProposalsController : ControllerBase
     public async Task<ActionResult<List<ProposalDto>>> GetProposals(
         [FromQuery] ProposalType? type,
         [FromQuery] ProposalStatus? status,
+        [FromQuery] Guid? campusId,
         CancellationToken ct)
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
-        var campusId = actor.RequireCampusId();
 
         IQueryable<Proposal> query = _db.Proposals.AsNoTracking()
-            .Where(p => p.CampusId == campusId)
+            .Include(p => p.Campus)
             .Include(p => p.SubmittedBy)
             .Include(p => p.ProposedClubHead)
             .Include(p => p.TargetEvent)
             .Include(p => p.TargetClub)
             .Include(p => p.Reviews).ThenInclude(r => r.Reviewer);
 
-        if (!actor.IsLeadership())
+        if (actor.IsAdmin())
         {
-            if (actor.Department == Department.Clubs)
+            if (campusId.HasValue)
+                query = query.Where(p => p.CampusId == campusId.Value);
+        }
+        else
+        {
+            var actorCampusId = actor.RequireCampusId();
+            query = query.Where(p => p.CampusId == actorCampusId);
+
+            if (!actor.IsLeadership())
             {
-                // Clubs department sees Club proposals and Club-linked Event proposals
-                query = query.Where(p => p.ProposalType == ProposalType.Club ||
-                                         (p.ProposalType == ProposalType.Event && p.TargetClubId != null));
-            }
-            else
-            {
-                var allowedType = DepartmentToProposalType(actor.Department);
-                if (!allowedType.HasValue)
-                    return Ok(new List<ProposalDto>());
-                query = query.Where(p => p.ProposalType == allowedType.Value);
+                if (actor.Department == Department.Clubs)
+                {
+                    query = query.Where(p => p.ProposalType == ProposalType.Club ||
+                                             (p.ProposalType == ProposalType.Event && p.TargetClubId != null));
+                }
+                else
+                {
+                    var allowedType = DepartmentToProposalType(actor.Department);
+                    if (!allowedType.HasValue)
+                        return Ok(new List<ProposalDto>());
+                    query = query.Where(p => p.ProposalType == allowedType.Value);
+                }
             }
         }
 
@@ -326,6 +336,7 @@ public class ProposalsController : ControllerBase
 
     private async Task<Proposal> LoadProposalAsync(Guid id, CancellationToken ct) =>
         await _db.Proposals.AsNoTracking()
+            .Include(p => p.Campus)
             .Include(p => p.SubmittedBy)
             .Include(p => p.ProposedClubHead)
             .Include(p => p.TargetEvent)
@@ -398,6 +409,7 @@ public class ProposalsController : ControllerBase
     private static ProposalDto ToDto(Proposal p) => new(
         p.Id,
         p.CampusId,
+        p.Campus?.Name ?? string.Empty,
         p.SubmittedById,
         p.SubmittedBy?.FullName ?? string.Empty,
         p.ProposalType.ToString(),
