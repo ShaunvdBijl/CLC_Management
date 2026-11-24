@@ -61,7 +61,13 @@ export interface Proposal {
   proposedClubHeadId: string | null;
   proposedClubHeadName: string | null;
   targetEventId: string | null;
+  targetEventTitle: string | null;
   targetClubId: string | null;
+  targetClubName: string | null;
+  clubWhatTheyDo: string | null;
+  clubMeetingSchedule: string | null;
+  clubMeetingLocation: string | null;
+  whatsAppMessage: string | null;
   createdAt: string;
   updatedAt: string;
   reviews: ProposalReview[];
@@ -81,6 +87,8 @@ export interface CampusEvent {
   campusId: string;
   campusName: string;
   sourceProposalId: string | null;
+  clubId: string | null;
+  clubName: string | null;
   title: string;
   description: string;
   venue: string;
@@ -94,6 +102,7 @@ export interface PublicCampusEvent {
   eventId: string;
   campusId: string;
   campusName: string;
+  clubName: string | null;
   title: string;
   description: string;
   venue: string;
@@ -119,6 +128,9 @@ export interface Club {
   campusId: string;
   name: string;
   description: string;
+  whatTheyDo: string;
+  meetingSchedule: string;
+  meetingLocation: string;
   clubHeadId: string;
   clubHeadName: string;
   isActive: boolean;

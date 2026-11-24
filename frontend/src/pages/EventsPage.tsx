@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Upload } from 'lucide-react';
+import { AlertTriangle, ImagePlus } from 'lucide-react';
 import { apiFetch, getApiBase } from '../lib/api';
-import { isLeadership, useAuth } from '../lib/authContext';
-import type { CampusEvent, ConflictCheckResponse, Proposal } from '../types/api';
+import { isAdmin, isLeadership, useAuth } from '../lib/authContext';
+import { FileDropZone } from '../components/FileDropZone';
+import type { CampusEvent, Club, ConflictCheckResponse, Proposal } from '../types/api';
 
 export function EventsPage() {
   const { user } = useAuth();
@@ -14,15 +15,25 @@ export function EventsPage() {
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
   const [sourceProposalId, setSourceProposalId] = useState('');
+  const [clubId, setClubId] = useState('');
+  const [posterTargetEventId, setPosterTargetEventId] = useState('');
   const [conflicts, setConflicts] = useState<ConflictCheckResponse | null>(null);
   const [error, setError] = useState('');
+  const [posterSuccess, setPosterSuccess] = useState('');
 
-  const canCreateEvent = user?.department === 'Events' || isLeadership(user);
-  const canUploadPoster = user?.department === 'Marketing';
+  const canCreateEvent =
+    user?.department === 'Events' || user?.department === 'Clubs' || isLeadership(user);
+  const canUploadPoster = user?.department === 'Marketing' || isAdmin(user);
 
   const eventsQuery = useQuery({
     queryKey: ['events'],
     queryFn: () => apiFetch<CampusEvent[]>('/api/v1/events'),
+  });
+
+  const clubsQuery = useQuery({
+    queryKey: ['clubs'],
+    queryFn: () => apiFetch<Club[]>('/api/v1/clubs'),
+    enabled: canCreateEvent,
   });
 
   const approvedProposalsQuery = useQuery({
@@ -37,6 +48,7 @@ export function EventsPage() {
         method: 'POST',
         body: JSON.stringify({
           sourceProposalId: sourceProposalId || null,
+          clubId: clubId || null,
           title,
           description,
           venue,
@@ -51,6 +63,7 @@ export function EventsPage() {
       setStartAt('');
       setEndAt('');
       setSourceProposalId('');
+      setClubId('');
       setConflicts(null);
       setError('');
       queryClient.invalidateQueries({ queryKey: ['events'] });
@@ -65,11 +78,15 @@ export function EventsPage() {
       formData.append('file', file);
       return apiFetch(`/api/v1/events/${eventId}/posters`, { method: 'POST', body: formData });
     },
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       setError('');
+      setPosterSuccess(`Uploaded "${vars.file.name}" successfully.`);
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setPosterSuccess('');
+      setError(e.message);
+    },
   });
 
   const handleCheckConflict = async () => {
@@ -87,28 +104,76 @@ export function EventsPage() {
     }
   };
 
+  const events = eventsQuery.data ?? [];
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Campus Events & Promotional Posters</h1>
-        <p className="text-sm text-slate-600">
-          Publish confirmed campus events with live conflict checks and attach Marketing posters.
+        <h1 className="text-2xl font-extrabold text-[#161616]">Campus Events & Promotional Posters</h1>
+        <p className="text-sm text-[#54595F]">
+          Publish campus-wide events (Events Dept) or club showcase events (Clubs Dept), and drop Marketing posters directly onto events.
         </p>
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-sm">{error}</div>
+        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium">{error}</div>
       )}
 
+      {/* Marketing Poster Drop Zone Panel */}
+      {canUploadPoster && (
+        <div className="bg-white rounded-2xl border border-neutral-200/90 p-5 space-y-4 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-extrabold text-[#161616] text-base flex items-center gap-2">
+              <ImagePlus className="w-4 h-4 text-[#DB3335]" />
+              Marketing Poster Upload Drop Zone
+            </h2>
+            <select
+              value={posterTargetEventId}
+              onChange={(e) => setPosterTargetEventId(e.target.value)}
+              className="text-sm border border-neutral-300 rounded-xl px-3 py-2 bg-white min-w-[240px]"
+            >
+              <option value="">Select Target Event for Poster...</option>
+              {events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.title} ({new Date(ev.startAt).toLocaleDateString()})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <FileDropZone
+            accept="image/png,image/jpeg,image/webp"
+            variant="image"
+            disabled={!posterTargetEventId || uploadPosterMutation.isPending}
+            title={
+              posterTargetEventId
+                ? 'Drop promotional poster here (PNG, JPEG, WebP)'
+                : 'Select an event from the dropdown above first'
+            }
+            subtitle="Max 5 MB · Automatically attached to the event and shown on the public campus activity feed"
+            onFileSelected={(file) => {
+              if (posterTargetEventId) {
+                uploadPosterMutation.mutate({ eventId: posterTargetEventId, file });
+              }
+            }}
+          />
+
+          {posterSuccess && (
+            <p className="text-xs font-semibold text-emerald-700">{posterSuccess}</p>
+          )}
+        </div>
+      )}
+
+      {/* Publish Event Form */}
       {canCreateEvent && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
             createMutation.mutate();
           }}
-          className="bg-white rounded-xl border border-slate-200 p-5 space-y-4"
+          className="bg-white rounded-2xl border border-neutral-200/90 p-5 space-y-4 shadow-xs"
         >
-          <h2 className="font-semibold text-slate-900">Publish Confirmed Event</h2>
+          <h2 className="font-extrabold text-[#161616] text-base">Publish Confirmed Event</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <select
               value={sourceProposalId}
@@ -120,44 +185,60 @@ export function EventsPage() {
                   setTitle(found.title);
                   setDescription(found.description);
                   setVenue(found.proposedVenue ?? '');
+                  if (found.targetClubId) setClubId(found.targetClubId);
                 }
               }}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm md:col-span-2"
+              className="border border-neutral-300 rounded-xl px-3 py-2.5 text-sm bg-white"
             >
-              <option value="">Direct Scheduling (or pick an Approved Event Proposal)</option>
+              <option value="">Direct Scheduling (or pick an Approved Proposal)</option>
               {(approvedProposalsQuery.data ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
-                  Approved Proposal: {p.title}
+                  Approved: {p.title}
                 </option>
               ))}
             </select>
+
+            <select
+              required={user?.department === 'Clubs' && !isLeadership(user)}
+              value={clubId}
+              onChange={(e) => setClubId(e.target.value)}
+              className="border border-neutral-300 rounded-xl px-3 py-2.5 text-sm bg-white"
+            >
+              <option value="">Scope: Campus-Wide Event (Events Dept)</option>
+              {(clubsQuery.data ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  Club Event: {c.name}
+                </option>
+              ))}
+            </select>
+
             <input
               required
-              placeholder="Event Title"
+              placeholder="Event Title (e.g., Campus Quiz Night)"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm"
             />
             <input
               required
               placeholder="Venue"
               value={venue}
               onChange={(e) => setVenue(e.target.value)}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm"
             />
             <input
               required
               type="datetime-local"
               value={startAt}
               onChange={(e) => setStartAt(e.target.value)}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm"
             />
             <input
               required
               type="datetime-local"
               value={endAt}
               onChange={(e) => setEndAt(e.target.value)}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm"
             />
           </div>
           <textarea
@@ -166,12 +247,12 @@ export function EventsPage() {
             placeholder="Event details..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm"
           />
 
           {conflicts?.hasConflict && (
-            <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs space-y-1">
-              <p className="font-semibold flex items-center gap-1.5">
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" /> Scheduling Conflict Detected
               </p>
               {conflicts.conflicts.map((c) => (
@@ -183,18 +264,18 @@ export function EventsPage() {
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={handleCheckConflict}
-              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50"
+              className="px-4 py-2 rounded-xl border border-neutral-300 text-[#161616] text-sm font-semibold hover:bg-neutral-50"
             >
               Check Date/Venue Conflicts
             </button>
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="px-4 py-2 rounded-lg bg-[#DB3335] text-white text-sm font-medium hover:bg-[#B52325]"
+              className="px-5 py-2 rounded-xl bg-[#DB3335] text-white text-sm font-bold hover:bg-[#B52325]"
             >
               Publish Event
             </button>
@@ -202,21 +283,27 @@ export function EventsPage() {
         </form>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {(eventsQuery.data ?? []).map((ev) => (
-          <div key={ev.id} className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+      {/* Event Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {events.map((ev) => (
+          <div key={ev.id} className="bg-white rounded-2xl border border-neutral-200/90 p-5 space-y-3 shadow-xs">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="font-semibold text-slate-900">{ev.title}</h3>
-                <p className="text-xs text-slate-500">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#161616] text-[#E9C00E]">
+                    {ev.clubName ? `CLUB · ${ev.clubName}` : 'CAMPUS-WIDE'}
+                  </span>
+                </div>
+                <h3 className="font-extrabold text-[#161616]">{ev.title}</h3>
+                <p className="text-xs text-[#54595F]">
                   {ev.venue} · {new Date(ev.startAt).toLocaleString()} – {new Date(ev.endAt).toLocaleTimeString()}
                 </p>
               </div>
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
                 {ev.status}
               </span>
             </div>
-            <p className="text-sm text-slate-700">{ev.description}</p>
+            <p className="text-sm text-[#3A3A3A]">{ev.description}</p>
 
             {ev.posters.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
@@ -226,7 +313,7 @@ export function EventsPage() {
                     href={`${getApiBase()}${poster.url}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="block w-24 h-24 rounded-lg overflow-hidden border border-slate-200"
+                    className="block w-24 h-24 rounded-xl overflow-hidden border border-neutral-200 hover:border-[#DB3335]"
                   >
                     <img
                       src={`${getApiBase()}${poster.url}`}
@@ -239,19 +326,15 @@ export function EventsPage() {
             )}
 
             {canUploadPoster && (
-              <label className="inline-flex items-center gap-2 text-xs font-medium text-[#DB3335] bg-red-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg cursor-pointer">
-                <Upload className="w-3.5 h-3.5" />
-                Upload Poster (PNG/JPG/WebP)
-                <input
-                  type="file"
+              <div className="pt-2">
+                <FileDropZone
                   accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadPosterMutation.mutate({ eventId: ev.id, file });
-                  }}
+                  variant="image"
+                  title="Drop poster for this event"
+                  subtitle="PNG, JPEG, or WebP (max 5 MB)"
+                  onFileSelected={(file) => uploadPosterMutation.mutate({ eventId: ev.id, file })}
                 />
-              </label>
+              </div>
             )}
           </div>
         ))}
