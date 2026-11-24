@@ -176,6 +176,7 @@ public class CalendarHistoryNotificationsController : ControllerBase
         IQueryable<CampusEvent> query = _db.Events.AsNoTracking()
             .Where(e => e.Status == EventStatus.Confirmed)
             .Include(e => e.Campus)
+            .Include(e => e.Club)
             .Include(e => e.Posters);
 
         if (campusId.HasValue) query = query.Where(e => e.CampusId == campusId.Value);
@@ -192,6 +193,7 @@ public class CalendarHistoryNotificationsController : ControllerBase
             e.Id,
             e.CampusId,
             e.Campus.Name,
+            e.Club?.Name,
             e.Title,
             e.Description,
             e.Venue,

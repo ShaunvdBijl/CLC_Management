@@ -37,32 +37,104 @@ public class ClubsAndMeetingsController : ControllerBase
             .OrderBy(c => c.Name)
             .ToListAsync(ct);
 
-        return Ok(clubs.Select(c => new ClubDto(
-            c.Id, c.CampusId, c.Name, c.Description, c.ClubHeadId, c.ClubHead?.FullName ?? string.Empty, c.IsActive, c.CreatedAt
-        )).ToList());
+        return Ok(clubs.Select(ToClubDto).ToList());
+    }
+
+    [HttpPost("clubs")]
+    public async Task<ActionResult<ClubDto>> CreateClub([FromBody] CreateClubRequest request, CancellationToken ct)
+    {
+        var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
+        if (!actor.BelongsToDepartment(Department.Clubs) && !actor.IsLeadership())
+            throw new UnauthorizedAccessException("Only Clubs department or Campus Leadership can register a club.");
+
+        var campusId = actor.RequireCampusId();
+        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Description))
+            throw new ArgumentException("Club name and description are required.");
+
+        var head = await _db.Users.FirstOrDefaultAsync(u => u.Id == request.ClubHeadId && (u.CampusId == campusId || actor.IsAdmin()), ct)
+            ?? throw new ArgumentException("Selected Club Head must belong to your campus.");
+
+        var club = new Club
+        {
+            CampusId = campusId,
+            Name = request.Name.Trim(),
+            Description = request.Description.Trim(),
+            WhatTheyDo = request.WhatTheyDo.Trim(),
+            MeetingSchedule = request.MeetingSchedule.Trim(),
+            MeetingLocation = request.MeetingLocation.Trim(),
+            ClubHeadId = head.Id,
+            IsActive = true
+        };
+
+        _db.Clubs.Add(club);
+        _db.ActivityLogs.Add(new ActivityLog
+        {
+            CampusId = campusId,
+            Department = Department.Clubs,
+            ActorId = actor.Id,
+            ActionType = "ClubRegistered",
+            EntityType = "Club",
+            EntityId = club.Id,
+            Summary = $"Registered club: {club.Name} (Meets: {club.MeetingSchedule} at {club.MeetingLocation})"
+        });
+
+        await _db.SaveChangesAsync(ct);
+        club.ClubHead = head;
+
+        return CreatedAtAction(nameof(GetClubs), new { id = club.Id }, ToClubDto(club));
+    }
+
+    [HttpPut("clubs/{id:guid}")]
+    public async Task<ActionResult<ClubDto>> UpdateClub(Guid id, [FromBody] UpdateClubRequest request, CancellationToken ct)
+    {
+        var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
+        if (actor.Role != UserRole.ClubsHead && !actor.IsLeadership())
+            throw new UnauthorizedAccessException("Only Clubs Head or Campus Leadership can update club details.");
+
+        var campusId = actor.RequireCampusId();
+        var club = await _db.Clubs.FirstOrDefaultAsync(c => c.Id == id, ct)
+            ?? throw new KeyNotFoundException("Club not found.");
+
+        if (club.CampusId != campusId && !actor.IsAdmin())
+            throw new UnauthorizedAccessException("Cannot modify clubs from another campus.");
+
+        var head = await _db.Users.FirstOrDefaultAsync(u => u.Id == request.ClubHeadId && (u.CampusId == club.CampusId || actor.IsAdmin()), ct)
+            ?? throw new ArgumentException("Selected Club Head must belong to the campus.");
+
+        club.Name = request.Name.Trim();
+        club.Description = request.Description.Trim();
+        club.WhatTheyDo = request.WhatTheyDo.Trim();
+        club.MeetingSchedule = request.MeetingSchedule.Trim();
+        club.MeetingLocation = request.MeetingLocation.Trim();
+        club.ClubHeadId = head.Id;
+
+        await _db.SaveChangesAsync(ct);
+        club.ClubHead = head;
+        return Ok(ToClubDto(club));
     }
 
     [HttpPatch("clubs/{id:guid}/head")]
     public async Task<ActionResult<ClubDto>> AssignClubHead(Guid id, [FromBody] AssignClubHeadRequest request, CancellationToken ct)
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
-        if (actor.Role != UserRole.ClubsHead && actor.Role != UserRole.CampusHead)
-            throw new UnauthorizedAccessException("Only Clubs Head or Campus Head can assign a Club Head.");
+        if (actor.Role != UserRole.ClubsHead && actor.Role != UserRole.CampusHead && !actor.IsAdmin())
+            throw new UnauthorizedAccessException("Only Clubs Head, Campus Head, or Admin can assign a Club Head.");
 
         var campusId = actor.RequireCampusId();
         var club = await _db.Clubs.FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new KeyNotFoundException("Club not found.");
 
-        if (club.CampusId != campusId)
+        if (club.CampusId != campusId && !actor.IsAdmin())
             throw new UnauthorizedAccessException("Cannot modify clubs from another campus.");
 
-        var newHead = await _db.Users.FirstOrDefaultAsync(u => u.Id == request.ClubHeadId && u.CampusId == campusId, ct)
+        var newHead = await _db.Users.FirstOrDefaultAsync(u => u.Id == request.ClubHeadId && (u.CampusId == club.CampusId || actor.IsAdmin()), ct)
             ?? throw new ArgumentException("Selected Club Head must belong to your campus.");
 
         club.ClubHeadId = newHead.Id;
         await _db.SaveChangesAsync(ct);
+        club.ClubHead = newHead;
 
-        return Ok(new ClubDto(club.Id, club.CampusId, club.Name, club.Description, club.ClubHeadId, newHead.FullName, club.IsActive, club.CreatedAt));
+        return Ok(ToClubDto(club));
     }
 
     [HttpGet("meetings")]
@@ -94,7 +166,7 @@ public class ClubsAndMeetingsController : ControllerBase
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
         if (!actor.IsLeadership())
-            throw new UnauthorizedAccessException("Only Campus Head or Deputy can schedule campus meetings.");
+            throw new UnauthorizedAccessException("Only Campus Head, Deputy, or Admin can schedule campus meetings.");
 
         var campusId = actor.RequireCampusId();
         if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Location))
@@ -142,17 +214,30 @@ public class ClubsAndMeetingsController : ControllerBase
     {
         var actor = await _currentUser.RequireCurrentUserAsync(User, ct);
         if (!actor.IsLeadership())
-            throw new UnauthorizedAccessException("Only Campus Head or Deputy can cancel campus meetings.");
+            throw new UnauthorizedAccessException("Only Campus Head, Deputy, or Admin can cancel campus meetings.");
 
         var campusId = actor.RequireCampusId();
         var meeting = await _db.Meetings.FirstOrDefaultAsync(m => m.Id == id, ct)
             ?? throw new KeyNotFoundException("Meeting not found.");
 
-        if (meeting.CampusId != campusId)
+        if (meeting.CampusId != campusId && !actor.IsAdmin())
             throw new UnauthorizedAccessException("Cannot delete meetings from another campus.");
 
         _db.Meetings.Remove(meeting);
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    private static ClubDto ToClubDto(Club c) => new(
+        c.Id,
+        c.CampusId,
+        c.Name,
+        c.Description,
+        c.WhatTheyDo,
+        c.MeetingSchedule,
+        c.MeetingLocation,
+        c.ClubHeadId,
+        c.ClubHead?.FullName ?? string.Empty,
+        c.IsActive,
+        c.CreatedAt);
 }

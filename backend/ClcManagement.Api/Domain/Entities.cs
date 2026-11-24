@@ -52,11 +52,15 @@ public class Proposal
 
     public Guid? ProposedClubHeadId { get; set; }
     public User? ProposedClubHead { get; set; }
+    public string? ClubWhatTheyDo { get; set; }
+    public string? ClubMeetingSchedule { get; set; }
+    public string? ClubMeetingLocation { get; set; }
 
     public Guid? TargetEventId { get; set; }
     public CampusEvent? TargetEvent { get; set; }
     public Guid? TargetClubId { get; set; }
     public Club? TargetClub { get; set; }
+    public string? WhatsAppMessage { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -85,6 +89,9 @@ public class Club
     public Proposal? SourceProposal { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public string WhatTheyDo { get; set; } = string.Empty;
+    public string MeetingSchedule { get; set; } = string.Empty;
+    public string MeetingLocation { get; set; } = string.Empty;
     public Guid ClubHeadId { get; set; }
     public User ClubHead { get; set; } = null!;
     public bool IsActive { get; set; } = true;
@@ -98,6 +105,8 @@ public class CampusEvent
     public Campus Campus { get; set; } = null!;
     public Guid? SourceProposalId { get; set; }
     public Proposal? SourceProposal { get; set; }
+    public Guid? ClubId { get; set; }
+    public Club? Club { get; set; }
     public Guid CreatedById { get; set; }
     public User CreatedBy { get; set; } = null!;
     public string Title { get; set; } = string.Empty;

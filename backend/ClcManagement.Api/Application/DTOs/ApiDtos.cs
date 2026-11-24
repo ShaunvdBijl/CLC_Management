@@ -35,7 +35,11 @@ public record CreateProposalRequest(
     string? ProposedVenue,
     Guid? ProposedClubHeadId,
     Guid? TargetEventId,
-    Guid? TargetClubId);
+    Guid? TargetClubId,
+    string? ClubWhatTheyDo = null,
+    string? ClubMeetingSchedule = null,
+    string? ClubMeetingLocation = null,
+    string? WhatsAppMessage = null);
 
 public record ResubmitProposalRequest(
     string Title,
@@ -45,7 +49,11 @@ public record ResubmitProposalRequest(
     string? ProposedVenue,
     Guid? ProposedClubHeadId,
     Guid? TargetEventId,
-    Guid? TargetClubId);
+    Guid? TargetClubId,
+    string? ClubWhatTheyDo = null,
+    string? ClubMeetingSchedule = null,
+    string? ClubMeetingLocation = null,
+    string? WhatsAppMessage = null);
 
 public record ReviewProposalRequest(ReviewDecision Decision, string? Comment);
 
@@ -72,7 +80,13 @@ public record ProposalDto(
     Guid? ProposedClubHeadId,
     string? ProposedClubHeadName,
     Guid? TargetEventId,
+    string? TargetEventTitle,
     Guid? TargetClubId,
+    string? TargetClubName,
+    string? ClubWhatTheyDo,
+    string? ClubMeetingSchedule,
+    string? ClubMeetingLocation,
+    string? WhatsAppMessage,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     List<ProposalReviewDto> Reviews);
@@ -83,7 +97,8 @@ public record CreateEventRequest(
     string Description,
     string Venue,
     DateTime StartAt,
-    DateTime EndAt);
+    DateTime EndAt,
+    Guid? ClubId = null);
 
 public record UpdateEventRequest(
     string Title,
@@ -106,6 +121,8 @@ public record EventDto(
     Guid CampusId,
     string CampusName,
     Guid? SourceProposalId,
+    Guid? ClubId,
+    string? ClubName,
     string Title,
     string Description,
     string Venue,
@@ -118,6 +135,7 @@ public record PublicCampusEventDto(
     Guid EventId,
     Guid CampusId,
     string CampusName,
+    string? ClubName,
     string Title,
     string Description,
     string Venue,
@@ -135,11 +153,30 @@ public record ConflictItemDto(
 
 public record ConflictCheckResponse(bool HasConflict, List<ConflictItemDto> Conflicts);
 
+public record CreateClubRequest(
+    string Name,
+    string Description,
+    string WhatTheyDo,
+    string MeetingSchedule,
+    string MeetingLocation,
+    Guid ClubHeadId);
+
+public record UpdateClubRequest(
+    string Name,
+    string Description,
+    string WhatTheyDo,
+    string MeetingSchedule,
+    string MeetingLocation,
+    Guid ClubHeadId);
+
 public record ClubDto(
     Guid Id,
     Guid CampusId,
     string Name,
     string Description,
+    string WhatTheyDo,
+    string MeetingSchedule,
+    string MeetingLocation,
     Guid ClubHeadId,
     string ClubHeadName,
     bool IsActive,

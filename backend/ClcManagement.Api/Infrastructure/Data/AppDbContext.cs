@@ -93,6 +93,7 @@ public class AppDbContext : DbContext
             entity.HasIndex(x => new { x.Status, x.StartAt });
             entity.HasOne(x => x.Campus).WithMany(c => c.Events).HasForeignKey(x => x.CampusId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.SourceProposal).WithMany().HasForeignKey(x => x.SourceProposalId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.Club).WithMany().HasForeignKey(x => x.ClubId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
         });
 
