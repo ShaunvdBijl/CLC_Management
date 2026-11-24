@@ -37,7 +37,7 @@ export function CalendarsPage() {
             <button
               onClick={() => setMode('campus')}
               className={`px-3 py-1.5 rounded-md text-xs font-semibold ${
-                mode === 'campus' ? 'bg-indigo-600 text-white' : 'text-slate-600'
+                mode === 'campus' ? 'bg-[#DB3335] text-white' : 'text-slate-600'
               }`}
             >
               Campus Calendar
@@ -46,7 +46,7 @@ export function CalendarsPage() {
           <button
             onClick={() => setMode('university')}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold ${
-              mode === 'university' ? 'bg-indigo-600 text-white' : 'text-slate-600'
+              mode === 'university' ? 'bg-[#DB3335] text-white' : 'text-slate-600'
             }`}
           >
             University-Wide Calendar

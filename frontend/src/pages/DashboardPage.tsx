@@ -63,8 +63,8 @@ export function DashboardPage() {
           to="/events"
           title="Campus Events"
           value={confirmedEvents}
-          icon={<Sparkles className="w-5 h-5 text-indigo-600" />}
-          accent="bg-indigo-50"
+          icon={<Sparkles className="w-5 h-5 text-[#DB3335]" />}
+          accent="bg-red-50"
         />
         <StatCard
           to="/tasks"
@@ -86,10 +86,10 @@ export function DashboardPage() {
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-indigo-600" />
+              <Calendar className="w-4 h-4 text-[#DB3335]" />
               Upcoming University-Wide Events
             </h2>
-            <Link to="/calendar" className="text-xs font-medium text-indigo-600 hover:underline">
+            <Link to="/calendar" className="text-xs font-medium text-[#DB3335] hover:underline">
               Open Calendar
             </Link>
           </div>
@@ -119,7 +119,7 @@ export function DashboardPage() {
               <FileText className="w-4 h-4 text-amber-600" />
               Recent Proposals
             </h2>
-            <Link to="/proposals" className="text-xs font-medium text-indigo-600 hover:underline">
+            <Link to="/proposals" className="text-xs font-medium text-[#DB3335] hover:underline">
               Manage Proposals
             </Link>
           </div>
@@ -161,7 +161,7 @@ function StatCard({
   return (
     <Link
       to={to}
-      className="bg-white rounded-xl border border-slate-200 p-4 hover:border-indigo-300 transition-colors flex items-center gap-4"
+      className="bg-white rounded-xl border border-slate-200 p-4 hover:border-[#DB3335] transition-colors flex items-center gap-4"
     >
       <div className={`w-11 h-11 rounded-lg ${accent} flex items-center justify-center shrink-0`}>
         {icon}

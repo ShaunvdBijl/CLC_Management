@@ -5,7 +5,8 @@ export type UserRole =
   | 'EventsHead'
   | 'ClubsHead'
   | 'MarketingHead'
-  | 'DepartmentMember';
+  | 'DepartmentMember'
+  | 'Admin';
 
 export type Department = 'None' | 'Events' | 'Clubs' | 'Marketing';
 export type ProposalType = 'Event' | 'Club' | 'Marketing';
@@ -18,6 +19,11 @@ export interface Campus {
   id: string;
   name: string;
   code: string;
+  address: string;
+  province: string;
+  imageUrl: string;
+  description: string;
+  confirmedEventCount: number;
 }
 
 export interface UserProfile {

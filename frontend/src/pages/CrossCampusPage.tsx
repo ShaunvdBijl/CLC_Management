@@ -62,12 +62,12 @@ export function CrossCampusPage() {
                 className="h-40 w-full object-cover"
               />
             ) : (
-              <div className="h-28 bg-gradient-to-r from-indigo-500 to-sky-500 flex items-end p-4">
+              <div className="h-28 bg-gradient-to-r from-[#1E1E1E] to-[#DB3335] flex items-end p-4">
                 <span className="text-xs font-bold uppercase tracking-wider text-white/90">{ev.campusName}</span>
               </div>
             )}
             <div className="p-4 space-y-2 flex-1">
-              <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
+              <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-red-50 text-[#DB3335]">
                 {ev.campusName}
               </span>
               <h3 className="font-semibold text-slate-900">{ev.title}</h3>
