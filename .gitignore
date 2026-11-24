@@ -1,0 +1,25 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+.vs/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Secrets & local environment files (NEVER commit)
+.env
+.env.local
+.env.*.local
+appsettings.Local.json
+
+# Local runtime uploads
+uploads/
+
+# OS / IDE
+.DS_Store
+Thumbs.db

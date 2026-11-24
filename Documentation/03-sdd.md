@@ -563,3 +563,37 @@ Auditorium B        |        | [==Club Fair==] |        |        |        |
 | **NFR-03 & NFR-04 (Uptime)** | Managed/hosted PostgreSQL persistence (`pgdata`), `/health` readiness endpoint on API, container restart policies (`unless-stopped`). |
 | **NFR-05 (50 Concurrent Users)** | Npgsql connection pooling (default max pool size 100), stateless JWT auth, async EF Core queries, SignalR WebSockets. |
 | **NFR-06 (< 500 ms Latency)** | Targeted composite PostgreSQL indexes (§3.3), `.AsNoTracking()` on read queries, DTO projection at the DB query level. |
+
+---
+
+## 10. Git Branching Strategy, CI/CD & Security Governance
+
+### 10.1 Environment Branch Hierarchy
+All code changes follow a strict promotion path enforced by GitHub Actions (`.github/workflows/ci.yml`) and GitHub Branch Rulesets:
+
+```mermaid
+flowchart LR
+    Feat["feat/*, fix/*, chore/*, docs/* (Feature Branches)"]
+    Dev["dev (Development Environment — Protected)"]
+    Docker["docker (Staging — Containerized Verification)"]
+    Main["main (Production — Protected Release)"]
+
+    Feat -- "PR + CI + Secret Scan + Conventional Title" --> Dev
+    Dev -- "PR + Full CI + Docker Build + Trivy Scan" --> Docker
+    Docker -- "PR + Review + Staging Sign-off" --> Main
+```
+
+- **`main` (Production):** Always deployable. Only accepts Pull Requests from `docker` (staging) or emergency `hotfix/*` branches.
+- **`docker` (Staging):** Validates the containerized multi-service stack (`docker-compose.yml`, Nginx proxy, `.NET 10` API, PostgreSQL) and runs Trivy container/filesystem vulnerability scans before production release.
+- **`dev` (Development Environment):** Protected integration branch. Direct pushes are disallowed; all work merges via Pull Request from typed feature branches.
+- **Feature Branches (`feat/*`, `fix/*`, `chore/*`, `docs/*`, `ci/*`, `test/*`, `refactor/*`):** Short-lived branches created off `dev`, using atomic [Conventional Commits](https://www.conventionalcommits.org/).
+
+### 10.2 Automated GitHub Workflows
+| Workflow | File | Triggers | Controls Enforced |
+| :--- | :--- | :--- | :--- |
+| **CI & Branch Guard** | `.github/workflows/ci.yml` | PR & Push (`dev`, `docker`, `main`) | Enforces branch promotion hierarchy, `.NET 10` build/test, and `React/TypeScript` build. |
+| **Security & SAST** | `.github/workflows/security.yml` | PR, Push & Weekly Schedule | Gitleaks secret scanning, NuGet & npm vulnerability audits, and CodeQL SAST (C# & TS). |
+| **Docker Staging** | `.github/workflows/docker-staging.yml` | PR & Push (`docker`, `main`) | `docker compose config`, `docker compose build`, and Trivy vulnerability scan. |
+| **Commit Lint** | `.github/workflows/commit-lint.yml` | Pull Requests | Validates Conventional Commit PR titles (`feat:`, `fix:`, `docs:`, `chore:`, `ci:`, `security:`). |
+| **Dependabot** | `.github/dependabot.yml` | Weekly (`dev`) | Automated dependency security updates for NuGet, npm, Docker, and GitHub Actions. |
+
